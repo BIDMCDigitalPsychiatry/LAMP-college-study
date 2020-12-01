@@ -121,12 +121,13 @@ def push(device, content, expiry=86400000):
 # Requires SLACK_NOTIFICATION_URL to be set; alternative to checking script logs.
 def slack(text):
         if DEBUG_MODE or SLACK_NOTIFICATION_URL is None:
-            log.debug(text)
+            pass
+            #log.debug(text)
         else:
             response = requests.post(f"https://{SLACK_NOTIFICATION_URL}", headers={
                 'Content-Type': 'application/json'
             }, json={'text': text}).json()
-        log.info(f"Sent a slack channel notification with content {content}.")
+        #log.info(f"Sent a slack channel notification with content {content}.")
 
 # Participant registration process driver code that handles all incoming HTTP requests.
 @app.route('/', methods=['GET', 'POST'], defaults={'path': ''})
