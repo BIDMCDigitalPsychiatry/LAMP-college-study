@@ -31,6 +31,8 @@ LAMP_PASSWORD = os.getenv("LAMP_PASSWORD")
 RESEARCHER_ID = os.getenv("RESEARCHER_ID")
 REDCAP_REQUEST_CODE = os.getenv("REDCAP_REQUEST_CODE")
 ADMIN_REQUEST_CODE = os.getenv("ADMIN_REQUEST_CODE")
+SLACK_NOTIFICATION_URL = os.getenv("SLACK_NOTIFICATION_URL")
+# Format: hooks.slack.com/services/XXXX/XXXX/XXXX
 
 # Create an HTTP app and connect to the LAMP Platform.
 app = Flask(APP_NAME)
@@ -116,6 +118,16 @@ def push(device, content, expiry=86400000):
             }, json=push_body).json()
         log.info(f"Sent push notification to {device} with content {content}.")
 
+# Requires SLACK_NOTIFICATION_URL to be set; alternative to checking script logs.
+def slack(text):
+        if DEBUG_MODE or SLACK_NOTIFICATION_URL is None:
+            log.debug(text)
+        else:
+            response = requests.post(f"https://{SLACK_NOTIFICATION_URL}", headers={
+                'Content-Type': 'application/json'
+            }, json={'text': text}).json()
+        log.info(f"Sent a slack channel notification with content {content}.")
+
 # Participant registration process driver code that handles all incoming HTTP requests.
 @app.route('/', methods=['GET', 'POST'], defaults={'path': ''})
 @app.route('/<path:path>', methods=['GET', 'POST'])
@@ -159,6 +171,7 @@ def index(path):
             LAMP.Type.set_attachment(participant_id, 'me', 'lamp.name', request_email)
             LAMP.Credential.create(participant_id, {'origin': participant_id, 'access_key': request_email, 'secret_key': participant_id, 'description': "Generated Login"})
             log.info(f"Configured Participant ID {participant_id} with a generated login credential using {request_email}.")
+            slack(f"Created Participant ID {participant_id} with alias '{request_email}' under Study {selected_study['name']}.")
         except:
             log.exception("API ERROR")
 
@@ -196,9 +209,10 @@ def index(path):
                 return html(f"<p>This ID does not have a registered device.</p>")
             device = f"{'apns' if all_devices[0]['device_type'] == 'iOS' else 'fcm'}:{all_devices[0]['device_token']}"
 
-            # 
+            # Send the generic notification.
             push(device, f"You have a new coaching message in mindLAMP.")
             log.info(f"Completed notification process for {request_id}.")
+            slack(f"Sent coaching notification to {request_id} upon administrator request.")
             return html(f"<p>Processed request for Participant ID {request_id}.</p>")
         except:
             log.info(f"Sending notification failed for {request_id}.")
@@ -267,6 +281,7 @@ def automations_worker():
                 if payout_amount is not None:
                     log.add()
                     log.info(f"Participant {participant['id']} was approved for a payout of amount {payout_amount}.")
+                    slack(f"Participant {participant['id']} was approved for a payout of amount {payout_amount}.")
 
                     # Retrieve the Participant's email address from their assigned Credential.
                     email_address = LAMP.Credential.list(participant['id'])['data'][0]['access_key']
@@ -280,6 +295,7 @@ def automations_worker():
                         participant_code = gift_codes[payout_amount].pop()
                         push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing your weekly activities! Here's your Amazon Gift Card Code: [{participant_code}]. Please ensure you fill out a payment form ASAP: https://www.digitalpsych.org/college-payment-forms")
                         log.info(f"Delivered gift card code {participant_code} to the Participant {participant['id']} via email.")
+                        slack(f"Delivered gift card code {participant_code} to the Participant {participant['id']} via email at {email_address}.")
 
                         # Mark the gift card code as claimed by a participant and remove it from the study registry.
                         if DEBUG_MODE:
@@ -291,11 +307,13 @@ def automations_worker():
                     else:
                         # We have no more gift card codes left - send an alert instead.
                         push(f"mailto:{SUPPORT_EMAIL}", f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
+                        slack(f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
                     log.sub()
 
                 # Additional offboarding/exit survey procedures.
                 if payout_amount == "$20":
                     push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing the study. Please complete the exit survey: https://redcap.bidmc.harvard.edu/redcap/surveys/?s=PNJ94E8DX4 ")
+                    slack(f"Delivered EXIT SURVEY and gift card code {participant_code} to the Participant {participant['id']} via email at {email_address}.")
             else:
                 log.info(f"No gift card codes to deliver to Participant {participant['id']}.")
             log.sub()
@@ -353,6 +371,7 @@ def automations_worker():
                         if not DEBUG_MODE:
                             LAMP.Type.set_attachment(RESEARCHER_ID, participant['id'], 'org.digitalpsych.college_study.delivered_interventions', delivered_interventions + [current])
                         log.info(f"Marked an intervention {intervention} as triggered on {current['delivered_on']} for Participant {participant['id']}.")
+                        slack(f"Marked an intervention {intervention} as triggered on {current['timestamp']} for Participant {participant['id']}.")
                     else:
                         log.warning(f"Skipping; no applicable devices registered for Participant {participant['id']}.")
                 else:
