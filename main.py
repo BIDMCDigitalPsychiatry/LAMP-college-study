@@ -126,7 +126,8 @@ def slack(text):
         else:
             response = requests.post(f"https://{SLACK_NOTIFICATION_URL}", headers={
                 'Content-Type': 'application/json'
-            }, json={'text': text}).json()
+            }, json={'text': text}).text
+            log.info(f"Slack response was: {response}.")
         #log.info(f"Sent a slack channel notification with content {content}.")
 
 # Participant registration process driver code that handles all incoming HTTP requests.
