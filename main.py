@@ -2,7 +2,6 @@
 import os
 import LAMP
 import time
-import boto3
 import random
 import logging
 import requests
@@ -23,21 +22,15 @@ SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
 PUBLIC_URL = os.getenv("PUBLIC_URL")
 PUSH_API_KEY = os.getenv("PUSH_API_KEY")
 PUSH_GATEWAY = os.getenv("PUSH_GATEWAY")
-AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY")
-AWS_SECRET_KEY = os.getenv("AWS_SECRET_KEY")
-AWS_REGION = os.getenv("AWS_REGION")
 LAMP_USERNAME = os.getenv("LAMP_USERNAME")
 LAMP_PASSWORD = os.getenv("LAMP_PASSWORD")
 RESEARCHER_ID = os.getenv("RESEARCHER_ID")
 REDCAP_REQUEST_CODE = os.getenv("REDCAP_REQUEST_CODE")
 ADMIN_REQUEST_CODE = os.getenv("ADMIN_REQUEST_CODE")
-SLACK_NOTIFICATION_URL = os.getenv("SLACK_NOTIFICATION_URL")
-# Format: hooks.slack.com/services/XXXX/XXXX/XXXX
 
 # Create an HTTP app and connect to the LAMP Platform.
 app = Flask(APP_NAME)
 LAMP.connect(LAMP_USERNAME, LAMP_PASSWORD)
-SES_CLIENT = boto3.client('ses', AWS_REGION, aws_access_key_id=AWS_ACCESS_KEY, aws_secret_access_key=AWS_SECRET_KEY)
 logging.basicConfig(level=logging.DEBUG)
 log = IndentedLoggerAdapter(logging.getLogger(__name__))
 
@@ -72,38 +65,36 @@ html = lambda body: f"""
 # Helper function to send custom push notifications to devices or emails to addresses.
 def push(device, content, expiry=86400000):
     if device.split(':', 1)[0] == 'mailto':
-        email_body = {
-            'Source': 'system@lamp.digital',
-            'ReplyToAddresses': [] if DEBUG_MODE else [SUPPORT_EMAIL],
-            'Destination': {
-                'ToAddresses': [device.split(':', 1)[1]], # 'mailto:somebody@example.com'
-                'CcAddresses': [] if DEBUG_MODE else [SUPPORT_EMAIL]
-            },
-            'Message': {
-                'Subject': { 'Data': content.split('\n', 1)[0] }, # 'Hello World!'
-                'Body': { 'Text': { 'Data': content.split('\n', 1)[1] } }
+        push_body = {
+            'api_key': PUSH_API_KEY,
+            'device_token': device,
+            'payload': {
+                'from': SUPPORT_EMAIL,
+                'cc': SUPPORT_EMAIL,
+                'subject': content.split('\n', 1)[0],
+                'body': content.split('\n', 1)[1]
             }
         }
         if DEBUG_MODE:
             log.debug(pformat(email_body))
         else:
-            # TODO: Sending email should be through the PUSH_GATEWAY instead.
-            response = SES_CLIENT.send_email(**email_body)
+            response = requests.post(f"https://{PUSH_GATEWAY}/push", headers={
+                'Content-Type': 'application/json'
+            }, json=push_body).json()
+            log.debug(pformat(response))
         log.info(f"Sent email to {device} with content {content}.")
     else: 
-        aps_body = {"content-available": 1} if content is None else {
-            "alert": content, # 'Hello World!'
-            "badge": 0,
-            "sound": "default",
-            "mutable-content": 1,
-            "content-available": 1
-        }
         push_body = {
             'api_key': PUSH_API_KEY,
-            'push_type': device.split(':', 1)[0], # 'apns:6ab41ce3...'
-            'device_token': device.split(':', 1)[1],
+            'device_token': device,
             'payload': {
-                "aps": aps_body,
+                "aps": {"content-available": 1} if content is None else {
+                    "alert": content, # 'Hello World!'
+                    "badge": 0,
+                    "sound": "default",
+                    "mutable-content": 1,
+                    "content-available": 1
+                },
                 "notificationId": content, # 'Hello World!'
                 "expiry": expiry, # 24*60*60*1000 (1day -> ms)
                 #"page": None, # 'https://dashboard.lamp.digital/'
@@ -118,17 +109,15 @@ def push(device, content, expiry=86400000):
             }, json=push_body).json()
         log.info(f"Sent push notification to {device} with content {content}.")
 
-# Requires SLACK_NOTIFICATION_URL to be set; alternative to checking script logs.
+# Requires Slack to be set up; alternative to checking script logs.
 def slack(text):
-        if DEBUG_MODE or SLACK_NOTIFICATION_URL is None:
-            pass
-            #log.debug(text)
-        else:
-            response = requests.post(f"https://{SLACK_NOTIFICATION_URL}", headers={
-                'Content-Type': 'application/json'
-            }, json={'text': text}).text
-            log.info(f"Slack response was: {response}.")
-        #log.info(f"Sent a slack channel notification with content {content}.")
+    if DEBUG_MODE:
+        pass
+    else:
+        response = requests.put(f"https://{PUSH_GATEWAY}/log?stream=slack", headers={
+            'Content-Type': 'text/plain'
+        }, data=text).text
+        log.info(f"Slack message response: {response}.")
 
 # Participant registration process driver code that handles all incoming HTTP requests.
 @app.route('/', methods=['GET', 'POST'], defaults={'path': ''})
@@ -389,6 +378,3 @@ def automations_worker():
 if __name__ == '__main__':
     RepeatTimer(3 * 60 * 60, automations_worker).start() # loop: every3h
     app.run(host='0.0.0.0', port=3000, debug=False)
-
-    #push('mailto:aditya.nrusimha@gmail.com', f"Welcome to mindLAMP.\nHello world!") # TESTING
-    #push('apns:8eb0452f177a8785fa7db5221f5bb2d2188f5385f08ed50a9178111c60082b04', f"Welcome to mindLAMP.\nHello world!") # TESTING
