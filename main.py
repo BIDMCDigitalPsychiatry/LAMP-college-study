@@ -27,6 +27,7 @@ LAMP_PASSWORD = os.getenv("LAMP_PASSWORD")
 RESEARCHER_ID = os.getenv("RESEARCHER_ID")
 REDCAP_REQUEST_CODE = os.getenv("REDCAP_REQUEST_CODE")
 ADMIN_REQUEST_CODE = os.getenv("ADMIN_REQUEST_CODE")
+# TODO: Convert to service account and "me" ID. Move all configuration into a Tag on "me".
 
 # Create an HTTP app and connect to the LAMP Platform.
 app = Flask(APP_NAME)
@@ -198,7 +199,7 @@ def index(path):
             if len(all_devices) == 0:
                 log.warning(f"No applicable devices registered for Participant {participant['id']}.")
                 return html(f"<p>This ID does not have a registered device.</p>")
-            device = f"{'apns' if all_devices[0]['device_type'] == 'iOS' else 'fcm'}:{all_devices[0]['device_token']}"
+            device = f"{'apns' if all_devices[0]['device_type'] == 'iOS' else 'gcm'}:{all_devices[0]['device_token']}"
 
             # Send the generic notification.
             push(device, f"You have a new coaching message in mindLAMP.")
@@ -332,7 +333,7 @@ def automations_worker():
                     analytics = LAMP.SensorEvent.all_by_participant(participant['id'], origin="lamp.analytics")['data']
                     all_devices = [event['data'] for event in analytics if 'device_token' in event['data']]
                     if len(all_devices) > 0:
-                        device = f"{'apns' if all_devices[0]['device_type'] == 'iOS' else 'fcm'}:{all_devices[0]['device_token']}"
+                        device = f"{'apns' if all_devices[0]['device_type'] == 'iOS' else 'gcm'}:{all_devices[0]['device_token']}"
                         
                         # Determine one of three random interventions and deliver it to the Participant's Feed.
                         log.add()
