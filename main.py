@@ -249,7 +249,9 @@ def automations_worker():
                 # TODO: Catch "None" responses in the survey.
 
                 # Calculate the number of days between the latest Weekly Survey and the very first ActivityEvent recorded for this pt.
-                days_since_start = (weekly_scores[0][0] - data[-1]['timestamp']) / (24 * 60 * 60 * 1000) # MILLISECONDS_PER_DAY
+                # NOTE: (weekly_scores[0][0] - data[-1]['timestamp']) yields "number of days since start AT TIME OF SURVEY".
+                #       This conditional logic behavior is completely different than the one implemented below:
+                days_since_start = (data[0]['timestamp'] - data[-1]['timestamp']) / (24 * 60 * 60 * 1000) # MILLISECONDS_PER_DAY
 
                 # Get the number of previously delivered gift card codes.
                 delivered_gift_codes = []
