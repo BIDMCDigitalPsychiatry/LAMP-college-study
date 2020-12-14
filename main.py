@@ -38,9 +38,13 @@ log = IndentedLoggerAdapter(logging.getLogger(__name__))
 # Helper class to create a repeating timer thread that executes a worker function.
 class RepeatTimer(Timer):
     def run(self):
-        self.function(*self.args, **self.kwargs)
-        while not self.finished.wait(self.interval):
+        try:
             self.function(*self.args, **self.kwargs)
+            while not self.finished.wait(self.interval):
+                self.function(*self.args, **self.kwargs)
+        except Exception as e:
+            print(e)
+            os._exit(2)
 
 # Helper function for an HTML response template that adds a slight theme to the page.
 html = lambda body: f"""
