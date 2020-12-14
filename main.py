@@ -5,6 +5,7 @@ import time
 import random
 import logging
 import requests
+import traceback
 import itertools
 from pprint import pformat
 from threading import Timer
@@ -43,7 +44,7 @@ class RepeatTimer(Timer):
             while not self.finished.wait(self.interval):
                 self.function(*self.args, **self.kwargs)
         except Exception as e:
-            print(e)
+            print(traceback.format_exc())
             os._exit(2)
 
 # Helper function for an HTML response template that adds a slight theme to the page.
@@ -81,7 +82,7 @@ def push(device, content, expiry=86400000):
             }
         }
         if DEBUG_MODE:
-            log.debug(pformat(email_body))
+            log.debug(pformat(push_body))
         else:
             response = requests.post(f"https://{PUSH_GATEWAY}/push", headers={
                 'Content-Type': 'application/json'
@@ -321,7 +322,7 @@ def automations_worker():
             log.add()
             daily_scores = [(
                 event['timestamp'],
-                sum(map(lambda slice: LIKERT_OPTIONS.index(slice['value']) if slice['value'] in LIKERT_OPTIONS else 0, event['temporal_slices'])))
+                sum(map(lambda slice: LIKERT_OPTIONS.index(slice['value']) if slice.get('value', None) in LIKERT_OPTIONS else 0, event['temporal_slices'])))
                 for event in data if event['activity'] == daily_survey['id']
             ]
             if len(daily_scores) >= 2 and (daily_scores[0][1] - daily_scores[1][1]) >= 3:
