@@ -271,7 +271,7 @@ def automations_worker():
                     payout_amount = "$15"
                 elif len(delivered_gift_codes) == 1 and len(weekly_scores) >= 2 and days_since_start >= 21:
                     payout_amount = "$15"
-                elif len(delivered_gift_codes) == 2 and len(weekly_scores) >= 3 and days_since_start >= 30:
+                elif len(delivered_gift_codes) == 2 and len(weekly_scores) >= 2 and days_since_start >= 28:
                     payout_amount = "$20"
                 else:
                     log.info(f"No gift card codes to deliver to Participant {participant['id']}.")
