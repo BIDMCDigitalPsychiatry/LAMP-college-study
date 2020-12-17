@@ -247,7 +247,7 @@ def automations_worker():
             log.add()
             weekly_scores = [(
                 event['timestamp'],
-                sum(map(lambda slice: LIKERT_OPTIONS.index(slice['value']) if slice['value'] in LIKERT_OPTIONS else 0, event['temporal_slices'])))
+                sum(map(lambda slice: LIKERT_OPTIONS.index(slice['value']) if slice.get('value', None) in LIKERT_OPTIONS else 0, event['temporal_slices'])))
                 for event in data if event['activity'] == weekly_survey['id']
             ]
             if len(weekly_scores) >= 1:
