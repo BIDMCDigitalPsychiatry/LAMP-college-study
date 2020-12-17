@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import os
 import LAMP
 import time
@@ -10,13 +9,10 @@ import itertools
 from pprint import pformat
 from threading import Timer
 from functools import reduce
-from dotenv import load_dotenv
 from flask import Flask, request
-from python_log_indenter import IndentedLoggerAdapter
 
 # [REQUIRED] Environment Variables
 # TODO: Remove all remaining hard-coded text/links.
-load_dotenv(verbose=True)
 DEBUG_MODE = True if os.getenv("DEBUG_MODE") == "on" else False
 APP_NAME = os.getenv("APP_NAME")
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
@@ -34,7 +30,7 @@ ADMIN_REQUEST_CODE = os.getenv("ADMIN_REQUEST_CODE")
 app = Flask(APP_NAME)
 LAMP.connect(LAMP_USERNAME, LAMP_PASSWORD)
 logging.basicConfig(level=logging.DEBUG)
-log = IndentedLoggerAdapter(logging.getLogger(__name__))
+log = logging.getLogger(__name__)
 
 # Helper class to create a repeating timer thread that executes a worker function.
 class RepeatTimer(Timer):
@@ -227,7 +223,6 @@ def automations_worker():
     # Iterate all participants across all sub-groups in the study.
     all_studies = LAMP.Study.all_by_researcher(RESEARCHER_ID)['data']
     for study in all_studies:
-        log.add()
         log.info(f"Processing Study \"{study['name']}\".")
 
         # Specifically look for the "Daily Survey" and "Weekly Survey" activities.
@@ -238,13 +233,11 @@ def automations_worker():
         # Iterate across all RECENT (only the previous day) patient data.
         all_participants = LAMP.Participant.all_by_study(study['id'])['data']
         for participant in all_participants:
-            log.add()
             log.info(f"Processing Participant \"{participant['id']}\".")
             data = LAMP.ActivityEvent.all_by_participant(participant['id'])['data']
 
             # Send a gift card if AT LEAST one "Weekly Survey" was completed today AND they did not already claim one.
             # Weekly scores are a filtered list of events in the format: (timestamp, sum(temporal_slices.value)) (DESC order.)
-            log.add()
             weekly_scores = [(
                 event['timestamp'],
                 sum(map(lambda slice: LIKERT_OPTIONS.index(slice['value']) if slice.get('value', None) in LIKERT_OPTIONS else 0, event['temporal_slices'])))
@@ -278,7 +271,6 @@ def automations_worker():
 
                 # Begin the process of vending the payout amount.
                 if payout_amount is not None:
-                    log.add()
                     log.info(f"Participant {participant['id']} was approved for a payout of amount {payout_amount}.")
                     slack(f"Participant {participant['id']} was approved for a payout of amount {payout_amount}.")
 
@@ -307,7 +299,6 @@ def automations_worker():
                         # We have no more gift card codes left - send an alert instead.
                         push(f"mailto:{SUPPORT_EMAIL}", f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
                         slack(f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
-                    log.sub()
 
                 # Additional offboarding/exit survey procedures.
                 if payout_amount == "$20":
@@ -315,11 +306,9 @@ def automations_worker():
                     slack(f"Delivered EXIT SURVEY and gift card code {participant_code} to the Participant {participant['id']} via email at {email_address}.")
             else:
                 log.info(f"No gift card codes to deliver to Participant {participant['id']}.")
-            log.sub()
             
             # Trigger a (RANDOM) intervention IFF [Mood.score += 3 OR Anxiety.score +=3]. (Now called "Daily Survey".)
             # Daily scores are a filtered list of events in the format: (timestamp, sum(temporal_slices.value)) (DESC order.)
-            log.add()
             daily_scores = [(
                 event['timestamp'],
                 sum(map(lambda slice: LIKERT_OPTIONS.index(slice['value']) if slice.get('value', None) in LIKERT_OPTIONS else 0, event['temporal_slices'])))
@@ -343,7 +332,6 @@ def automations_worker():
                         device = f"{'apns' if all_devices[0]['device_type'] == 'iOS' else 'gcm'}:{all_devices[0]['device_token']}"
                         
                         # Determine one of three random interventions and deliver it to the Participant's Feed.
-                        log.add()
                         intervention = random.choice(['lamp.journal', 'lamp.breathe', None])
                         if intervention == 'lamp.journal':
                             activity = [x for x in all_activities if x['spec'] == intervention]
@@ -363,7 +351,6 @@ def automations_worker():
                             # Send a placebo message, since the semantics of sensor collection may change if we don't.
                             push(device, None)
                             log.info(f"Sent a placebo notification to Participant {participant['id']}.")
-                        log.sub()
 
                         # Track the delivered intervention (or None) for data purposes. 
                         current = {'timestamp': daily_scores[0][0], 'delivered_on': int(time.time() * 1000), 'intervention': intervention}
@@ -377,9 +364,6 @@ def automations_worker():
                     log.info(f"Skipping; already processed an earlier intervention for Participant {participant['id']}.")
             else:
                 log.info(f"No interventions to deliver to Participant {participant['id']}.")
-            log.sub()
-            log.sub()
-        log.sub()
     log.info('Sleeping automations worker...')
     slack(f"Completed processing.")
 
