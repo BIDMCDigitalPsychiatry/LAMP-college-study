@@ -381,6 +381,7 @@ def automations_worker():
             log.sub()
         log.sub()
     log.info('Sleeping automations worker...')
+    slack(f"Completed processing.")
 
 # Driver code to accept HTTP requests and run the automations worker on repeat.
 if __name__ == '__main__':
