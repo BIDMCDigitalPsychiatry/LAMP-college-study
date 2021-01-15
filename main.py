@@ -218,7 +218,8 @@ def index(path):
 # The Automations worker listens to changes in the study's patient data and triggers interventions.
 def automations_worker():
     log.info('Awakening automations worker for processing...')
-    LIKERT_OPTIONS = ["0", "1", "2", "3"] # temporary patch
+    LIKERT_OPTIONS = ["0", "1", "2", "3"] # this + below = temporary patch
+    REVERSE_CODING = ["i was able to function well today", "today I could handle what came my way"]
 
     # Iterate all participants across all sub-groups in the study.
     all_studies = LAMP.Study.all_by_researcher(RESEARCHER_ID)['data']
@@ -267,7 +268,7 @@ def automations_worker():
                 elif len(delivered_gift_codes) == 2 and len(weekly_scores) >= 2 and days_since_start >= 28:
                     payout_amount = "$20"
                 else:
-                    log.info(f"No gift card codes to deliver to Participant {participant['id']}.")
+                    log.info(f"No gift card codes to deliver to Participant {participant['id']} -- already delivered {len(delivered_gift_codes)}.")
 
                 # Begin the process of vending the payout amount.
                 if payout_amount is not None:
@@ -300,18 +301,21 @@ def automations_worker():
                         push(f"mailto:{SUPPORT_EMAIL}", f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
                         slack(f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
 
-                # Additional offboarding/exit survey procedures.
+                # Additional offboarding/exit survey procedures and update the "lamp.name" to add a FINISHED indicator.
                 if payout_amount == "$20":
-                    push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing the study. Please complete the exit survey: https://redcap.bidmc.harvard.edu/redcap/surveys/?s=PNJ94E8DX4 ")
+                    push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing the study. Please complete the exit survey: https://redcap.bidmc.harvard.edu/redcap/surveys/?s=PNJ94E8DX4 -- You no longer need to fill out surveys and you can delete the app at any time now! Thank you!")
+                    if not DEBUG_MODE:
+                        LAMP.Type.set_attachment(participant['id'], 'me', 'lamp.name', f"✅ {email_address}")
                     slack(f"Delivered EXIT SURVEY and gift card code {participant_code} to the Participant {participant['id']} via email at {email_address}.")
             else:
                 log.info(f"No gift card codes to deliver to Participant {participant['id']}.")
             
             # Trigger a (RANDOM) intervention IFF [Mood.score += 3 OR Anxiety.score +=3]. (Now called "Daily Survey".)
             # Daily scores are a filtered list of events in the format: (timestamp, sum(temporal_slices.value)) (DESC order.)
+            # The questions to be reverse coded (lowercase-matched) are also flipped.
             daily_scores = [(
                 event['timestamp'],
-                sum(map(lambda slice: LIKERT_OPTIONS.index(slice['value']) if slice.get('value', None) in LIKERT_OPTIONS else 0, event['temporal_slices'])))
+                sum(map(lambda slice: (((-len(LIKERT_OPTIONS) if slice.get('item', None) in REVERSE_CODING else 0) + LIKERT_OPTIONS.index(slice['value'])) if slice.get('value', None) in LIKERT_OPTIONS else 0), event['temporal_slices'])))
                 for event in data if event['activity'] == daily_survey['id']
             ]
             if len(daily_scores) >= 2 and (daily_scores[0][1] - daily_scores[1][1]) >= 3:
