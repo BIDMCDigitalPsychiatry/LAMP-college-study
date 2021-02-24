@@ -128,7 +128,7 @@ def index(path):
 
     # Display a simple form with a code and email input.
     if request.path == '/' and request.method == 'GET':
-        return html(f"""<p>To continue, please enter your unique RedCap Survey Code and the Email Address that you used in that survey <b>(must be in lower-case)</b>. <b><a href="https://redcap.bidmc.harvard.edu/redcap/surveys/?s=8HMTYWNPD9">If you have not taken the onboarding survey, please tap here to begin.</a></b></p>
+        return html(f"""<p>To continue, please enter your unique RedCap Survey Code and the <b>Student Email Address</b> that you used in that survey <b>(must be in lower-case and ending in ".edu")</b>. If you do not use your student email address issued by your school, an account will not be created. <b><a href="https://redcap.bidmc.harvard.edu/redcap/surveys/?s=8HMTYWNPD9">If you have not taken the onboarding survey, please tap here to begin.</a></b></p>
             <form action="/" method="post">
                 <label for="email">Email Address:</label><input type="email" id="email" name="email" required>
                 <label for="code">RedCap Code:</label><input type="text" id="code" name="code" required>
@@ -144,6 +144,11 @@ def index(path):
         if request_email is None or request_code != REDCAP_REQUEST_CODE:
             log.warning('Participant registration input parameters were invalid.')
             return html(f"<p>There was an error processing your request.</p>")
+
+        # Require a dot EDU domain and exclude the fake "@students.edu" to prevent spamming.
+        if not request_email.lower().endswith('.edu') or request_email.lower().endswith('@students.edu'):
+            log.warning('Participant email address did not end in .edu or ended in @students.edu which is invalid.')
+            return html(f"<p>There was an error processing your request. Please use a valid student email address issued by your school.</p>")
         
         # Before continuing, verify that the requester's email address has not already been registered.
         # NOTE: Not wrapped in try-catch because this Tag MUST exist prior to running this script.
