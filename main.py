@@ -306,12 +306,12 @@ def automations_worker():
                         push(f"mailto:{SUPPORT_EMAIL}", f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
                         slack(f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
 
-                # Additional offboarding/exit survey procedures and update the "lamp.name" to add a FINISHED indicator.
-                if payout_amount == "$20":
-                    push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing the study. Please complete the exit survey: https://redcap.bidmc.harvard.edu/redcap/surveys/?s=PNJ94E8DX4 -- You no longer need to fill out surveys and you can delete the app at any time now! Thank you!")
-                    if not DEBUG_MODE:
-                        LAMP.Type.set_attachment(participant['id'], 'me', 'lamp.name', f"✅ {email_address}")
-                    slack(f"Delivered EXIT SURVEY and gift card code {participant_code} to the Participant {participant['id']} via email at {email_address}.")
+                    # Additional offboarding/exit survey procedures and update the "lamp.name" to add a FINISHED indicator.
+                    if payout_amount == "$20":
+                        push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing the study. Please complete the exit survey: https://redcap.bidmc.harvard.edu/redcap/surveys/?s=PNJ94E8DX4 -- You no longer need to fill out surveys and you can delete the app at any time now! Thank you!")
+                        if not DEBUG_MODE:
+                            LAMP.Type.set_attachment(participant['id'], 'me', 'lamp.name', f"✅ {email_address}")
+                        slack(f"Delivered EXIT SURVEY and gift card code to the Participant {participant['id']} via email at {email_address}.")
             else:
                 log.info(f"No gift card codes to deliver to Participant {participant['id']}.")
             
