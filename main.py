@@ -244,9 +244,10 @@ def automations_worker():
 
             # Send a gift card if AT LEAST one "Weekly Survey" was completed today AND they did not already claim one.
             # Weekly scores are a filtered list of events in the format: (timestamp, sum(temporal_slices.value)) (DESC order.)
+            # NOTE: For this survey only question #9 (PHQ-9 suicide, slice 8:9) is considered as part of the score.
             weekly_scores = [(
                 event['timestamp'],
-                sum(map(lambda slice: LIKERT_OPTIONS.index(slice['value']) if slice.get('value', None) in LIKERT_OPTIONS else 0, event['temporal_slices'])))
+                sum(map(lambda slice: LIKERT_OPTIONS.index(slice['value']) if slice.get('value', None) in LIKERT_OPTIONS else 0, event['temporal_slices'][8:9])))
                 for event in data if event['activity'] == weekly_survey['id']
             ]
             if len(weekly_scores) >= 1:
@@ -275,14 +276,32 @@ def automations_worker():
                 else:
                     log.info(f"No gift card codes to deliver to Participant {participant['id']} -- already delivered {len(delivered_gift_codes)}.")
 
-                # Begin the process of vending the payout amount.
+                # Begin the process of vending the payout amount. Also used to track whether we have sent a PHQ-9 notice.
                 if payout_amount is not None:
                     log.info(f"Participant {participant['id']} was approved for a payout of amount {payout_amount}.")
                     slack(f"Participant {participant['id']} was approved for a payout of amount {payout_amount}.")
 
                     # Retrieve the Participant's email address from their assigned Credential.
                     email_address = LAMP.Credential.list(participant['id'])['data'][0]['access_key']
-
+                    
+                    # Continue Gift Card processing after attending to PHQ-9 suicide Q score -> push notification.
+                    log.info(f"Participant {participant['id']} reported PHQ9 Q9 value of {weekly_scores[-1][1]}.")
+                    if weekly_scores[-1][1] >= 3: #"Nearly every day"
+                        
+                        # Determine the Participant's device push token or bail if none is configured.
+                        analytics = LAMP.SensorEvent.all_by_participant(participant['id'], origin="lamp.analytics")['data']
+                        all_devices = [event['data'] for event in analytics if 'device_token' in event['data']]
+                        if len(all_devices) > 0:
+                            device = f"{'apns' if all_devices[0]['device_type'] == 'iOS' else 'gcm'}:{all_devices[0]['device_token']}"
+                            push(device, f"Thank you for completing your weekly survey. Based on your responses, a member of the research team will reach out within 24 hours. Because your responses are not monitored in real time, we would like to remind you of some other resources that you can access if you are considering self-harm. The national suicide prevention line is a 24/7 toll-free service that can be accessed by dialing 1-800-273-8255. You may also reach out to the principal investigator of this study, Dr. John Torous, MD, by dialing 1-510-684-6827.")
+                            
+                            # Record success/failure to send push notification.
+                            log.info(f"Sent PHQ-9 notice to Participant {participant['id']} via push notification.")
+                            slack(f"Participant {participant['id']} reported PHQ9 Q9 value of {weekly_scores[-1][1]}; sent push notification notice.")
+                        else:
+                            log.warning(f"PHQ-9 notice failed: no applicable devices registered for Participant {participant['id']}.")
+                            slack(f"[URGENT] FAILED TO SEND PHQ-9 NOTICE TO Participant {participant['id']}: reported PHQ9 Q9 value of {weekly_scores[-1][1]}.")
+                    
                     # Retreive an available gift card code from the study registry and deliver the email. 
                     # NOTE: Not wrapped in try-catch because this Tag MUST exist prior to running this script.
                     gift_codes = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.college_study.gift_codes')['data']
