@@ -1,4 +1,5 @@
 import os
+import json
 import LAMP
 import time
 import random
@@ -10,6 +11,114 @@ from pprint import pformat
 from threading import Timer
 from functools import reduce
 from flask import Flask, request
+
+VEGA_SPEC_ALL = {
+    "$schema": "https://vega.github.io/schema/vega-lite/v4.json",
+    "background": "#00000000",
+    "config": {
+        "view": {"stroke": "transparent"},
+        "axisX": {
+            "orient": "bottom",
+            "format": "%b %d",
+            "labelColor": "rgba(0, 0, 0, 0.4)",
+            "labelFont": "Inter",
+            "labelFontWeight": 500,
+            "labelFontSize": 10,
+            "labelPadding": 4,
+            "title": "null",
+            "grid": "false",
+        },
+        "axisY": {
+            "orient": "left",
+            "tickCount": 12,
+            "labelColor": "rgba(0, 0, 0, 0.4)",
+            "labelFont": "Inter",
+            "labelFontWeight": 500,
+            "labelFontSize": 10,
+            "labelPadding": 4,
+            "title": "null",
+            "grid": "false",
+        },
+    },
+    "vconcat": [],
+}
+
+VEGA_SPEC_SURVEY = {
+    "width": 600,
+    "height": 200,
+    "title": "graph title",
+    "mark": {
+        "type": "area",
+        "tooltip": "true",
+        "point": {"color": "#2196f3", "size": 50},
+        "line": {"color": "#2196f3", "strokeDash": [3, 1]},
+        "color": {
+            "x1": 1,
+            "y1": 1,
+            "x2": 1,
+            "y2": 0,
+            "gradient": "linear",
+            "stops": [
+                {"offset": 0, "color": "#ffffff00"},
+                {"offset": 1, "color": "#2196f3"},
+            ],
+        },
+    },
+    "encoding": {
+        "x": {"field": "x", "type": "ordinal", "timeUnit": "utcyearmonthdate"},
+        "y": {"field": "y", "type": "quantitative"},
+        "strokeWidth": {"value": 2},
+        "tooltip": [
+            {
+                "field": "x",
+                "type": "ordinal",
+                "timeUnit": "utcyearmonthdatehoursminutes",
+                "title": "DATE",
+            },
+            {"field": "y", "type": "nominal", "title": "SCORE"},
+        ],
+    },
+    "data": {"values": []},
+}
+
+VEGA_SPEC_JOURNAL = {
+    "width": 600,
+    "height": 200,
+    "title": "graph title",
+    "mark": {
+        "type": "area",
+        "tooltip": "true",
+        "point": {"color": "#2196f3", "size": 50},
+        "line": {"color": "#2196f3", "strokeDash": [3, 1]},
+        "color": {
+            "x1": 1,
+            "y1": 1,
+            "x2": 1,
+            "y2": 0,
+            "gradient": "linear",
+            "stops": [
+                {"offset": 0, "color": "#ffffff00"},
+                {"offset": 1, "color": "#2196f3"},
+            ],
+        },
+    },
+    "encoding": {
+        "x": {"field": "x", "type": "ordinal", "timeUnit": "utcyearmonthdate"},
+        "y": {"field": "y", "type": "quantitative"},
+        "strokeWidth": {"value": 2},
+        "tooltip": [
+            {
+                "field": "x",
+                "type": "ordinal",
+                "timeUnit": "utcyearmonthdatehoursminutes",
+                "title": "DATE",
+            },
+            {"field": "y", "type": "nominal", "title": "SCORE"},
+            {"field": "t", "type": "nominal", "title": "ENTRY"},
+        ],
+    },
+    "data": {"values": []},
+}
 
 # [REQUIRED] Environment Variables
 # TODO: Remove all remaining hard-coded text/links.
@@ -44,12 +153,12 @@ class RepeatTimer(Timer):
             os._exit(2)
 
 # Helper function for an HTML response template that adds a slight theme to the page.
-html = lambda body: f"""
+html = lambda body, disable_css=False: f"""
 <html>
     <head>
         <title>{APP_NAME}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">
+        {'<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">' if not disable_css else ''}
     </head>
     <body>
         <center>
@@ -120,6 +229,103 @@ def slack(text):
             'Content-Type': 'text/plain'
         }, data=text).text
         log.info(f"Slack message response: {response}.")
+
+# TODO
+def patient_graphs(participant):
+
+    # Get survey events for participant.
+    def survey_results(activities, events):
+        survey_dict = { x['id']: x for x in activities if x["spec"] == "lamp.survey" }
+        participant_surveys = {}  # maps survey_type to occurence of scores
+        for event in events:
+            # Check if it's a survey event
+            if event["activity"] not in survey_dict or len(event["temporal_slices"]) == 0:
+                continue
+            survey = survey_dict[event["activity"]]
+            survey_result = {}  # maps question domains to scores
+            for temporal_slice in event["temporal_slices"]:  # individual questions in a survey
+                found = False
+                # match question info to question
+                for question_info in survey["settings"]:
+                    if question_info["text"] == temporal_slice["item"]:
+                        found = True
+                        break
+                if not found:
+                    continue
+                # score based on question type:
+                score = None
+                event_value = temporal_slice.get("value")  # safely get event['value'] to protect from missing keys
+                if question_info["type"] == "likert":
+                    try:
+                        score = float(event_value)
+                    except:
+                        continue
+                elif question_info["type"] == "boolean" and event_value is not None:
+                    if event_value.lower() == "no":
+                        score = 0.0  # no is healthy in standard scoring
+                    elif event_value.lower() == "yes":
+                        score = 3.0  # yes is healthy in reverse scoring
+                elif (question_info["type"] in ["list", "slider", "rating"] and event_value is not None):
+                    for option_index in range(len(question_info["options"])):
+                        if event_value == question_info["options"][option_index]:
+                            score = option_index * 3 / (len(question_info["options"]) - 1)
+                if score is None:
+                    continue  # skip text, multi-select, missing options
+                # add event to a category of activity name
+                if survey["name"] not in survey_result:
+                    survey_result[survey["name"]] = []
+                survey_result[survey["name"]].append(score)
+            # add mean to each cat to master dictionary
+            for category in survey_result:
+                survey_result[category] = sum(survey_result[category]) / len(survey_result[category])
+                if category not in participant_surveys:
+                    participant_surveys[category] = []
+                participant_surveys[category].append({"x": event["timestamp"], "y": survey_result[category]})
+        # sort surveys by timestamp
+        for category in participant_surveys:
+            participant_surveys[category] = sorted(participant_surveys[category], key=lambda x: x["x"])
+        return participant_surveys
+
+    # Get journal for participant
+    def journal_results(activities, events):
+        journal = [x['id'] for x in activities if x["spec"] == "lamp.journal"]
+        entries = [x for x in events if x['activity'] in journal]
+        return  [{
+            "x": entry["timestamp"],
+            "y": 1 if entry["static_data"].get("sentiment") == "good" else 0,
+            "t": entry["static_data"]["text"],
+        } for entry in entries]
+
+    # Start with a clone of the Vega Spec.
+    spec = VEGA_SPEC_ALL.copy()
+    spec["title"] = participant
+    spec["vconcat"] = []
+
+    activities = LAMP.Activity.all_by_participant(participant)["data"]
+    events = LAMP.ActivityEvent.all_by_participant(participant)["data"]
+
+    # Add all surveys as individual graphs.
+    results = survey_results(activities, events)
+    for survey in results:
+        graph = VEGA_SPEC_SURVEY.copy()
+        graph["title"] = survey
+        graph["data"] = { "values": results[survey] }
+        spec["vconcat"].append(graph.copy())
+
+    # Add the single Journal graph.
+    journal_graph = VEGA_SPEC_JOURNAL.copy()
+    journal_graph["title"] = "Journal Entries"
+    journal_graph["data"] = {"values": journal_results(activities, events)}
+    spec["vconcat"].append(journal_graph.copy())
+
+    # Return JSON-ified Vega Spec.
+    return f"""
+        <div id="vis"></div>
+        <script src="https://cdn.jsdelivr.net/npm/vega@latest"></script>
+        <script src="https://cdn.jsdelivr.net/npm/vega-lite@latest"></script>
+        <script src="https://cdn.jsdelivr.net/npm/vega-embed@latest"></script>
+        <script type="text/javascript">vegaEmbed('#vis', {json.dumps(spec)});</script>
+    """
 
 # Participant registration process driver code that handles all incoming HTTP requests.
 @app.route('/', methods=['GET', 'POST'], defaults={'path': ''})
@@ -214,6 +420,37 @@ def index(path):
             return html(f"<p>Processed request for Participant ID {request_id}.</p>")
         except:
             log.info(f"Sending notification failed for {request_id}.")
+            return html(f"<p>There was an error processing your request.</p>")
+
+    # Display a simple admin form with a code and Participant ID input.
+    elif request.path == '/summary' and request.method == 'GET':
+        return html(f"""<p>To view your overall study data, log in below.</p>
+            <form action="/summary" method="post">
+                <label for="email">Email Address:</label><input type="email" id="email" name="email" required>
+                <label for="password">Password:</label><input type="password" id="password" name="password" required>
+                <input type="submit" value="Continue">
+            </form>""")
+    
+    # Display a simple form with a code and email input.
+    elif request.path == '/summary' and request.method == 'POST':
+
+        # Validate the submitted Email Address and Participant ID.
+        request_email = request.form.get('email')
+        request_id = request.form.get('password')
+        if request_email is None or request_id is None:
+            log.warning('Login information was incorrect.')
+            return html(f"<p>Incorrect login information.</p>")
+        
+        # Retrieve the Participant's email address from their assigned Credential.
+        email_address = LAMP.Credential.list(request_id)['data'][0]['access_key']
+        if request_email != email_address:
+            log.warning('Login information was incorrect.')
+            return html(f"<p>Incorrect login information.</p>")
+
+        # Grab the HTML for the patient.
+        try:
+            return html(patient_graphs(request_id), True)
+        except:
             return html(f"<p>There was an error processing your request.</p>")
 
     # Unsupported HTTP Method, Path, or a similar 404.
@@ -397,5 +634,5 @@ def automations_worker():
 
 # Driver code to accept HTTP requests and run the automations worker on repeat.
 if __name__ == '__main__':
-    RepeatTimer(3 * 60 * 60, automations_worker).start() # loop: every3h
+    #RepeatTimer(3 * 60 * 60, automations_worker).start() # loop: every3h
     app.run(host='0.0.0.0', port=3000, debug=False)
