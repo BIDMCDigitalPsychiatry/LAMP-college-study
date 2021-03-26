@@ -318,13 +318,24 @@ def patient_graphs(participant):
     journal_graph["data"] = {"values": journal_results(activities, events)}
     spec["vconcat"].append(journal_graph.copy())
 
+    # Grab any dynamic visualizations that were uploaded.
+    # TODO: This could be dynamically looped by listing attachments instead of hardcoding.
+    spec2 = LAMP.Type.get_attachment(participant, "lamp.dashboard.experimental.activity_segmentation")["data"]
+    spec3 = LAMP.Type.get_attachment(participant, "lamp.dashboard.experimental.sensor_data_quality.3hr")["data"]
+
     # Return JSON-ified Vega Spec.
     return f"""
         <div id="vis"></div>
+        <div id="vis2"></div>
+        <div id="vis3"></div>
         <script src="https://cdn.jsdelivr.net/npm/vega@latest"></script>
         <script src="https://cdn.jsdelivr.net/npm/vega-lite@latest"></script>
         <script src="https://cdn.jsdelivr.net/npm/vega-embed@latest"></script>
-        <script type="text/javascript">vegaEmbed('#vis', {json.dumps(spec)});</script>
+        <script type="text/javascript">
+            vegaEmbed('#vis', {json.dumps(spec)}, {{ renderer: 'svg' }});
+            vegaEmbed('#vis2', {spec2}, {{ renderer: 'svg' }});
+            vegaEmbed('#vis3', {spec3}, {{ renderer: 'svg' }});
+        </script>
     """
 
 # Participant registration process driver code that handles all incoming HTTP requests.
@@ -634,5 +645,5 @@ def automations_worker():
 
 # Driver code to accept HTTP requests and run the automations worker on repeat.
 if __name__ == '__main__':
-    RepeatTimer(3 * 60 * 60, automations_worker).start() # loop: every3h
+    #RepeatTimer(3 * 60 * 60, automations_worker).start() # loop: every3h
     app.run(host='0.0.0.0', port=3000, debug=False)
