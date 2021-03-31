@@ -226,7 +226,9 @@ def slack(text):
     push_body = {
         'api_key': PUSH_API_KEY,
         'device_token': f"slack:{PUSH_SLACK_HOOK}",
-        'payload': text
+        'payload': {
+            'content': text
+        }
     }
     if DEBUG_MODE:
         log.debug(pformat(push_body))
