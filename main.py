@@ -225,20 +225,8 @@ def push(device, content, expiry=86400000):
 def slack(text):
     push_body = {
         'api_key': PUSH_API_KEY,
-        'device_token': f"slack:{SLACK_HOOK}",
-        'payload': {
-            "aps": {"content-available": 1} if content is None else {
-                "alert": content, # 'Hello World!'
-                "badge": 0,
-                "sound": "default",
-                "mutable-content": 1,
-                "content-available": 1
-            },
-            "notificationId": content, # 'Hello World!'
-            "expiry": expiry, # 24*60*60*1000 (1day -> ms)
-            #"page": None, # 'https://dashboard.lamp.digital/'
-            "actions": []
-        }
+        'device_token': f"slack:{PUSH_SLACK_HOOK}",
+        'payload': text
     }
     if DEBUG_MODE:
         log.debug(pformat(push_body))
