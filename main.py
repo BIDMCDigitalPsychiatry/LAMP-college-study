@@ -128,6 +128,7 @@ SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
 PUBLIC_URL = os.getenv("PUBLIC_URL")
 PUSH_API_KEY = os.getenv("PUSH_API_KEY")
 PUSH_GATEWAY = os.getenv("PUSH_GATEWAY")
+PUSH_SLACK_HOOK = os.getenv("PUSH_SLACK_HOOK")
 LAMP_USERNAME = os.getenv("LAMP_USERNAME")
 LAMP_PASSWORD = os.getenv("LAMP_PASSWORD")
 RESEARCHER_ID = os.getenv("RESEARCHER_ID")
@@ -222,12 +223,29 @@ def push(device, content, expiry=86400000):
 
 # Requires Slack to be set up; alternative to checking script logs.
 def slack(text):
+    push_body = {
+        'api_key': PUSH_API_KEY,
+        'device_token': f"slack:{SLACK_HOOK}",
+        'payload': {
+            "aps": {"content-available": 1} if content is None else {
+                "alert": content, # 'Hello World!'
+                "badge": 0,
+                "sound": "default",
+                "mutable-content": 1,
+                "content-available": 1
+            },
+            "notificationId": content, # 'Hello World!'
+            "expiry": expiry, # 24*60*60*1000 (1day -> ms)
+            #"page": None, # 'https://dashboard.lamp.digital/'
+            "actions": []
+        }
+    }
     if DEBUG_MODE:
-        pass
+        log.debug(pformat(push_body))
     else:
-        response = requests.put(f"https://{PUSH_GATEWAY}/log?stream=slack", headers={
-            'Content-Type': 'text/plain'
-        }, data=text).text
+        response = requests.post(f"https://{PUSH_GATEWAY}/push", headers={
+            'Content-Type': 'application/json'
+        }, json=push_body).json()
         log.info(f"Slack message response: {response}.")
 
 # TODO
