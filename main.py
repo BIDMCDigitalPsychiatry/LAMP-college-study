@@ -328,8 +328,14 @@ def patient_graphs(participant):
 
     # Grab any dynamic visualizations that were uploaded.
     # TODO: This could be dynamically looped by listing attachments instead of hardcoding.
-    spec2 = LAMP.Type.get_attachment(participant, "lamp.dashboard.experimental.activity_segmentation")["data"]
-    spec3 = LAMP.Type.get_attachment(participant, "lamp.dashboard.experimental.sensor_data_quality.3hr")["data"]
+    try:
+        spec2 = LAMP.Type.get_attachment(participant, "lamp.dashboard.experimental.activity_segmentation")["data"]
+    except LAMP.ApiException:
+        spec2=[]
+    try:
+        spec3 = LAMP.Type.get_attachment(participant, "lamp.dashboard.experimental.sensor_data_quality.3hr")["data"]
+    except LAMP.ApiException:
+        spec3=[]
 
     # Return JSON-ified Vega Spec.
     return f"""
