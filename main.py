@@ -25,19 +25,19 @@ VEGA_SPEC_ALL = {
             "labelFontWeight": 500,
             "labelFontSize": 10,
             "labelPadding": 4,
-            "title": "null",
-            "grid": "false",
+            "title": None,
+            "grid": True,
         },
         "axisY": {
             "orient": "left",
-            "tickCount": 12,
+            "tickCount": 6,
             "labelColor": "rgba(0, 0, 0, 0.4)",
             "labelFont": "Inter",
             "labelFontWeight": 500,
             "labelFontSize": 10,
             "labelPadding": 4,
-            "title": "null",
-            "grid": "false",
+            "title": None,
+            "grid": True,
         },
     },
     "vconcat": [],
@@ -45,7 +45,7 @@ VEGA_SPEC_ALL = {
 
 VEGA_SPEC_SURVEY = {
     "width": 600,
-    "height": 200,
+    "height": 75,
     "title": "graph title",
     "mark": {
         "type": "area",
@@ -83,7 +83,7 @@ VEGA_SPEC_SURVEY = {
 
 VEGA_SPEC_JOURNAL = {
     "width": 600,
-    "height": 200,
+    "height": 75,
     "title": "graph title",
     "mark": {
         "type": "area",
@@ -237,19 +237,32 @@ def slack(text):
             'Content-Type': 'application/json'
         }, json=push_body).json()
         log.info(f"Slack message response: {response}.")
-
 # TODO
 def patient_graphs(participant):
 
     # Get survey events for participant.
     def survey_results(activities, events):
-        survey_dict = { x['id']: x for x in activities if x["spec"] == "lamp.survey" }
+        survey_dict = {x['id']: x for x in activities if x["spec"] == "lamp.survey"}
         participant_surveys = {}  # maps survey_type to occurence of scores
+        qc_dicts = {}  # maps activity ids to question category dicts
         for event in events:
             # Check if it's a survey event
             if event["activity"] not in survey_dict or len(event["temporal_slices"]) == 0:
                 continue
-            survey = survey_dict[event["activity"]]
+            # Find the question categories from attachments
+            if event['activity'] in qc_dicts:
+                question_cats = qc_dicts[event['activity']]
+            else:
+                try:
+                    question_cats = LAMP.Type.get_attachment(event['activity'],
+                                                             'cortex.question_categories')['data']
+                    qc_dicts[event['activity']] = question_cats
+                except LAMP.ApiException:
+                    print('SKIP ACTIVITY API EXCEPTION')
+                    question_cats = None
+                    continue
+
+            survey = survey_dict[event['activity']]
             survey_result = {}  # maps question domains to scores
             for temporal_slice in event["temporal_slices"]:  # individual questions in a survey
                 found = False
@@ -262,11 +275,11 @@ def patient_graphs(participant):
                     continue
                 # score based on question type:
                 score = None
-                event_value = temporal_slice.get("value")  # safely get event['value'] to protect from missing keys
+                event_value = temporal_slice.get("value")  # safely get 'value' incase missing keys
                 if question_info["type"] == "likert":
                     try:
                         score = float(event_value)
-                    except:
+                    except Exception:
                         continue
                 elif question_info["type"] == "boolean" and event_value is not None:
                     if event_value.lower() == "no":
@@ -279,10 +292,16 @@ def patient_graphs(participant):
                             score = option_index * 3 / (len(question_info["options"]) - 1)
                 if score is None:
                     continue  # skip text, multi-select, missing options
-                # add event to a category of activity name
-                if survey["name"] not in survey_result:
-                    survey_result[survey["name"]] = []
-                survey_result[survey["name"]].append(score)
+                # reverse score the specified questions
+                if question_cats[temporal_slice["item"]].get('reverse_score'):
+                    score = 3-score
+                # add event to a category from question cats
+                category = question_cats.get(temporal_slice["item"],{'category':'_unmatched'})['category']
+                category+= f" ({survey['name']})"
+                if category not in survey_result:
+                    survey_result[category] = []
+                survey_result[category].append(score)
+                
             # add mean to each cat to master dictionary
             for category in survey_result:
                 survey_result[category] = sum(survey_result[category]) / len(survey_result[category])
@@ -314,10 +333,11 @@ def patient_graphs(participant):
 
     # Add all surveys as individual graphs.
     results = survey_results(activities, events)
+        
     for survey in results:
         graph = VEGA_SPEC_SURVEY.copy()
         graph["title"] = survey
-        graph["data"] = { "values": results[survey] }
+        graph["data"] = {"values": results[survey]}
         spec["vconcat"].append(graph.copy())
 
     # Add the single Journal graph.
