@@ -349,14 +349,16 @@ def patient_graphs(participant):
 
     # Grab any dynamic visualizations that were uploaded.
     # TODO: This could be dynamically looped by listing attachments instead of hardcoding.
-    try:
-        spec2 = LAMP.Type.get_attachment(participant, "lamp.dashboard.experimental.activity_segmentation")["data"]
-    except LAMP.ApiException:
-        spec2 = []
-    try:
-        spec3 = LAMP.Type.get_attachment(participant, "lamp.dashboard.experimental.sensor_data_quality.3hr")["data"]
-    except LAMP.ApiException:
-        spec3 = []
+    # 5/3/21 Temporarly removed due to formating issues and lack of updates
+    # TODO: Eventually should be intergrated into new cortex
+#     try:
+#         spec2 = LAMP.Type.get_attachment(participant, "lamp.dashboard.experimental.activity_segmentation")["data"]
+#     except LAMP.ApiException:
+#         spec2 = []
+#     try:
+#         spec3 = LAMP.Type.get_attachment(participant, "lamp.dashboard.experimental.sensor_data_quality.3hr")["data"]
+#     except LAMP.ApiException:
+#         spec3 = []
 
     # Return JSON-ified Vega Spec.
     return f"""
@@ -368,10 +370,11 @@ def patient_graphs(participant):
         <script src="https://cdn.jsdelivr.net/npm/vega-embed@latest"></script>
         <script type="text/javascript">
             vegaEmbed('#vis', {json.dumps(spec)}, {{ renderer: 'svg' }});
-            vegaEmbed('#vis2', {spec2}, {{ renderer: 'svg' }});
-            vegaEmbed('#vis3', {spec3}, {{ renderer: 'svg' }});
         </script>
     """
+# Temporary removed from spec:
+#             vegaEmbed('#vis2', {spec2}, {{ renderer: 'svg' }});
+#             vegaEmbed('#vis3', {spec3}, {{ renderer: 'svg' }});
 
 # Participant registration process driver code that handles all incoming HTTP requests.
 @app.route('/', methods=['GET', 'POST'], defaults={'path': ''})
