@@ -299,7 +299,7 @@ def patient_graphs(participant):
                     category = question_cats[temporal_slice["item"]]['category']
                     category += f" ({survey['name']})"
                 else:
-                    category = survey['name'] # default question cat is survey name
+                    category = f"_unmatched ({survey['name']})"  # default question cat
                 if category not in survey_result:
                     survey_result[category] = []
                 survey_result[category].append(score)
