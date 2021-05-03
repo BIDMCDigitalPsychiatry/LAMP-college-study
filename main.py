@@ -258,9 +258,8 @@ def patient_graphs(participant):
                                                              'cortex.question_categories')['data']
                     qc_dicts[event['activity']] = question_cats
                 except LAMP.ApiException:
-                    print('SKIP ACTIVITY API EXCEPTION')
-                    question_cats = None
-                    continue
+                    question_cats = {}
+                    qc_dicts[event['activity']] = {}
 
             survey = survey_dict[event['activity']]
             survey_result = {}  # maps question domains to scores
@@ -293,15 +292,17 @@ def patient_graphs(participant):
                 if score is None:
                     continue  # skip text, multi-select, missing options
                 # reverse score the specified questions
-                if question_cats[temporal_slice["item"]].get('reverse_score'):
-                    score = 3-score
-                # add event to a category from question cats
-                category = question_cats.get(temporal_slice["item"],{'category':'_unmatched'})['category']
-                category+= f" ({survey['name']})"
+                if temporal_slice["item"] in question_cats:
+                    if question_cats[temporal_slice["item"]]['reverse']:
+                        score = 3-score
+                    # add event to a category from question cats
+                    category = question_cats[temporal_slice["item"]]['category']
+                    category += f" ({survey['name']})"
+                else:
+                    category = survey['name'] # default question cat is survey name
                 if category not in survey_result:
                     survey_result[category] = []
                 survey_result[category].append(score)
-                
             # add mean to each cat to master dictionary
             for category in survey_result:
                 survey_result[category] = sum(survey_result[category]) / len(survey_result[category])
@@ -333,7 +334,7 @@ def patient_graphs(participant):
 
     # Add all surveys as individual graphs.
     results = survey_results(activities, events)
-        
+
     for survey in results:
         graph = VEGA_SPEC_SURVEY.copy()
         graph["title"] = survey
@@ -351,11 +352,11 @@ def patient_graphs(participant):
     try:
         spec2 = LAMP.Type.get_attachment(participant, "lamp.dashboard.experimental.activity_segmentation")["data"]
     except LAMP.ApiException:
-        spec2=[]
+        spec2 = []
     try:
         spec3 = LAMP.Type.get_attachment(participant, "lamp.dashboard.experimental.sensor_data_quality.3hr")["data"]
     except LAMP.ApiException:
-        spec3=[]
+        spec3 = []
 
     # Return JSON-ified Vega Spec.
     return f"""
