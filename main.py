@@ -126,18 +126,30 @@ VEGA_SPEC_JOURNAL = {
 
 # [REQUIRED] Environment Variables
 # TODO: Remove all remaining hard-coded text/links.
-DEBUG_MODE = True if os.getenv("DEBUG_MODE") == "on" else False
-APP_NAME = os.getenv("APP_NAME")
-SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
-PUBLIC_URL = os.getenv("PUBLIC_URL")
-PUSH_API_KEY = os.getenv("PUSH_API_KEY")
-PUSH_GATEWAY = os.getenv("PUSH_GATEWAY")
-PUSH_SLACK_HOOK = os.getenv("PUSH_SLACK_HOOK")
-LAMP_USERNAME = os.getenv("LAMP_USERNAME")
-LAMP_PASSWORD = os.getenv("LAMP_PASSWORD")
-RESEARCHER_ID = os.getenv("RESEARCHER_ID")
-REDCAP_REQUEST_CODE = os.getenv("REDCAP_REQUEST_CODE")
-ADMIN_REQUEST_CODE = os.getenv("ADMIN_REQUEST_CODE")
+# DEBUG_MODE = True if os.getenv("DEBUG_MODE") == "on" else False
+# APP_NAME = os.getenv("APP_NAME")
+# SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
+# PUBLIC_URL = os.getenv("PUBLIC_URL")
+# PUSH_API_KEY = os.getenv("PUSH_API_KEY")
+# PUSH_GATEWAY = os.getenv("PUSH_GATEWAY")
+# PUSH_SLACK_HOOK = os.getenv("PUSH_SLACK_HOOK")
+# LAMP_USERNAME = os.getenv("LAMP_USERNAME")
+# LAMP_PASSWORD = os.getenv("LAMP_PASSWORD")
+# RESEARCHER_ID = os.getenv("RESEARCHER_ID")
+# REDCAP_REQUEST_CODE = os.getenv("REDCAP_REQUEST_CODE")
+# ADMIN_REQUEST_CODE = os.getenv("ADMIN_REQUEST_CODE")
+DEBUG_MODE=True
+APP_NAME="BIDMC COVID-19 College Study V2"
+SUPPORT_EMAIL="collegestudy@bidmc.harvard.edu"
+PUBLIC_URL="college-study-v2.lamp.digital"
+PUSH_API_KEY="n1WHtGTpRByGjeOP"
+PUSH_GATEWAY="app-gateway.lamp.digital"
+PUSH_SLACK_HOOK="TBHRCTGUD/B01FX35F55Y/q6CbAeABXW4VD7coc5mYkTFQ"
+LAMP_USERNAME="admin"
+LAMP_PASSWORD="LAMPLAMP"
+RESEARCHER_ID="4aq1kry81ktrb5v1smvs"
+REDCAP_REQUEST_CODE="4482785823"
+ADMIN_REQUEST_CODE="998746293462043782"
 # TODO: Convert to service account and "me" ID. Move all configuration into a Tag on "me".
 
 # Create an HTTP app and connect to the LAMP Platform.
@@ -428,7 +440,7 @@ def index(path):
             LAMP.Type.set_attachment(participant_id, 'me', 'lamp.name', request_email)
             LAMP.Credential.create(participant_id, {'origin': participant_id, 'access_key': request_email, 'secret_key': participant_id, 'description': "Generated Login"})
             log.info(f"Configured Participant ID {participant_id} with a generated login credential using {request_email}.")
-            slack(f"Created Participant ID {participant_id} with alias '{request_email}' under Study {selected_study['name']}.")
+            #slack(f"Created Participant ID {participant_id} with alias '{request_email}' under Study {selected_study['name']}.")
         except:
             log.exception("API ERROR")
 
@@ -469,7 +481,7 @@ def index(path):
             # Send the generic notification.
             push(device, f"You have a new coaching message in mindLAMP.")
             log.info(f"Completed notification process for {request_id}.")
-            slack(f"Sent coaching notification to {request_id} upon administrator request.")
+            #slack(f"Sent coaching notification to {request_id} upon administrator request.")
             return html(f"<p>Processed request for Participant ID {request_id}.</p>")
         except:
             log.info(f"Sending notification failed for {request_id}.")
@@ -532,6 +544,32 @@ def automations_worker():
         for participant in all_participants:
             log.info(f"Processing Participant \"{participant['id']}\".")
             data = LAMP.ActivityEvent.all_by_participant(participant['id'])['data']
+            days_since_start = (data[0]['timestamp'] - data[-1]['timestamp']) / (24 * 60 * 60 * 1000) # MILLISECONDS_PER_DAY
+
+            #Check to see if enrolled tag exists
+            try:
+                enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_v2.enrolled')['data']['status']
+                if enrolled != 'trial' and enrolled != 'enrolled':
+                    log.info(f"Participant \"{participant['id']}\" has an invalid enrollment tag. Please see.")
+                    continue
+
+            except:
+                if days_since_start > 3:
+                    log.info(f"Participant \"{participant['id']}\" has been participating past the trial period, yet ")
+                #Make enrolled tag 
+                enrolled = 'trial'
+                LAMP.Type.set_attachment(participant['id'], 'org.digitalpsych.college_study_v2.enrolled', {'status':enrolled})
+
+
+            #Check for elapsed time of account to see in trial period or not
+            if enrolled == 'trial':
+                trial_worker(participant['id'])
+            elif enrolled == 'enrolled':
+                enrollment_worker(participant['id'])
+
+            else:
+                log.info(f"Participant \"{participant['id']}\" has an invalid enrollment tag. Please see.")
+                continue
 
             # Send a gift card if AT LEAST one "Weekly Survey" was completed today AND they did not already claim one.
             # Weekly scores are a filtered list of events in the format: (timestamp, sum(temporal_slices.value)) (DESC order.)
@@ -547,7 +585,6 @@ def automations_worker():
                 # Calculate the number of days between the latest Weekly Survey and the very first ActivityEvent recorded for this pt.
                 # NOTE: (weekly_scores[0][0] - data[-1]['timestamp']) yields "number of days since start AT TIME OF SURVEY".
                 #       This conditional logic behavior is completely different than the one implemented below:
-                days_since_start = (data[0]['timestamp'] - data[-1]['timestamp']) / (24 * 60 * 60 * 1000) # MILLISECONDS_PER_DAY
 
                 # Get the number of previously delivered gift card codes.
                 delivered_gift_codes = []
@@ -570,7 +607,7 @@ def automations_worker():
                 # Begin the process of vending the payout amount. Also used to track whether we have sent a PHQ-9 notice.
                 if payout_amount is not None:
                     log.info(f"Participant {participant['id']} was approved for a payout of amount {payout_amount}.")
-                    slack(f"Participant {participant['id']} was approved for a payout of amount {payout_amount}.")
+                    #slack(f"Participant {participant['id']} was approved for a payout of amount {payout_amount}.")
 
                     # Retrieve the Participant's email address from their assigned Credential.
                     email_address = LAMP.Credential.list(participant['id'])['data'][0]['access_key']
@@ -588,10 +625,10 @@ def automations_worker():
                             
                             # Record success/failure to send push notification.
                             log.info(f"Sent PHQ-9 notice to Participant {participant['id']} via push notification.")
-                            slack(f"Participant {participant['id']} reported PHQ9 Q9 value of {weekly_scores[-1][1]}; sent push notification notice.")
+                            #slack(f"Participant {participant['id']} reported PHQ9 Q9 value of {weekly_scores[-1][1]}; sent push notification notice.")
                         else:
                             log.warning(f"PHQ-9 notice failed: no applicable devices registered for Participant {participant['id']}.")
-                            slack(f"[URGENT] FAILED TO SEND PHQ-9 NOTICE TO Participant {participant['id']}: reported PHQ9 Q9 value of {weekly_scores[-1][1]}.")
+                            #slack(f"[URGENT] FAILED TO SEND PHQ-9 NOTICE TO Participant {participant['id']}: reported PHQ9 Q9 value of {weekly_scores[-1][1]}.")
                     
                     # Retreive an available gift card code from the study registry and deliver the email. 
                     # NOTE: Not wrapped in try-catch because this Tag MUST exist prior to running this script.
@@ -602,7 +639,7 @@ def automations_worker():
                         participant_code = gift_codes[payout_amount].pop()
                         push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing your weekly activities! Here's your Amazon Gift Card Code: [{participant_code}]. Please ensure you fill out a payment form ASAP: https://www.digitalpsych.org/college-payment-forms")
                         log.info(f"Delivered gift card code {participant_code} to the Participant {participant['id']} via email.")
-                        slack(f"Delivered gift card code {participant_code} to the Participant {participant['id']} via email at {email_address}.")
+                        #slack(f"Delivered gift card code {participant_code} to the Participant {participant['id']} via email at {email_address}.")
 
                         # Mark the gift card code as claimed by a participant and remove it from the study registry.
                         if DEBUG_MODE:
@@ -614,14 +651,14 @@ def automations_worker():
                     else:
                         # We have no more gift card codes left - send an alert instead.
                         push(f"mailto:{SUPPORT_EMAIL}", f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
-                        slack(f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
+                        #slack(f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
 
                     # Additional offboarding/exit survey procedures and update the "lamp.name" to add a FINISHED indicator.
                     if payout_amount == "$20":
                         push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing the study. Please complete the exit survey: https://redcap.bidmc.harvard.edu/redcap/surveys/?s=PNJ94E8DX4 -- You no longer need to fill out surveys and you can delete the app at any time now! Thank you!")
                         if not DEBUG_MODE:
                             LAMP.Type.set_attachment(participant['id'], 'me', 'lamp.name', f"✅ {email_address}")
-                        slack(f"Delivered EXIT SURVEY and gift card code to the Participant {participant['id']} via email at {email_address}.")
+                        #slack(f"Delivered EXIT SURVEY and gift card code to the Participant {participant['id']} via email at {email_address}.")
             else:
                 log.info(f"No gift card codes to deliver to Participant {participant['id']}.")
             
@@ -676,7 +713,7 @@ def automations_worker():
                         if not DEBUG_MODE:
                             LAMP.Type.set_attachment(RESEARCHER_ID, participant['id'], 'org.digitalpsych.college_study_v2.delivered_interventions', delivered_interventions + [current])
                         log.info(f"Marked an intervention {intervention} as triggered on {current['delivered_on']} for Participant {participant['id']}.")
-                        slack(f"Marked an intervention {intervention} as triggered on {current['timestamp']} for Participant {participant['id']}.")
+                        #slack(f"Marked an intervention {intervention} as triggered on {current['timestamp']} for Participant {participant['id']}.")
                     else:
                         log.warning(f"Skipping; no applicable devices registered for Participant {participant['id']}.")
                 else:
@@ -684,7 +721,7 @@ def automations_worker():
             else:
                 log.info(f"No interventions to deliver to Participant {participant['id']}.")
     log.info('Sleeping automations worker...')
-    slack(f"Completed processing.")
+    #slack(f"Completed processing.")
 
 # Driver code to accept HTTP requests and run the automations worker on repeat.
 if __name__ == '__main__':
