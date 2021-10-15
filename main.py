@@ -12,6 +12,10 @@ from threading import Timer
 from functools import reduce
 from flask import Flask, request
 
+#DUMMY COMMENT, for worklflow release
+#ONE MORE DUMMY
+#SECOND
+
 VEGA_SPEC_ALL = {
     "$schema": "https://vega.github.io/schema/vega-lite/v4.json",
     "background": "#00000000",
@@ -407,7 +411,7 @@ def index(path):
         
         # Before continuing, verify that the requester's email address has not already been registered.
         # NOTE: Not wrapped in try-catch because this Tag MUST exist prior to running this script.
-        registered_users = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.college_study.registered_users')['data']
+        registered_users = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.college_study_v2.registered_users')['data']
         if request_email in registered_users:
             log.warning(f"Email address {request_email} was already in use; aborting registration.")
             return html(f"""<p>You've already signed up for this study.</p>
@@ -430,7 +434,7 @@ def index(path):
 
         # Notify the requester's email address of this information and mark them in the registered_users Tag.
         push(f"mailto:{request_email}", f"Welcome to mindLAMP.\nThank you for completing the enrollment survey and informed consent process. We have generated an account for you to download the mindLAMP app and get started.\nThis is your password: {participant_id}.\nPlease follow this link to download and login to the app: https://www.digitalpsych.org/college-covid You will need the password given to you in this email.\n")
-        LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study.registered_users', registered_users + [request_email])
+        LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_v2.registered_users', registered_users + [request_email])
         log.info(f"Completed registration process for {request_email}.")
         return html(f"<p>Further instructions have been emailed to {request_email}.</p>")
 
@@ -518,7 +522,8 @@ def automations_worker():
         log.info(f"Processing Study \"{study['name']}\".")
 
         # Specifically look for the "Daily Survey" and "Weekly Survey" activities.
-        all_activities = LAMP.Activity.all_by_study(study['id'])['data']
+        all_activities = LAMP.Activity.all_by_study(study['id'])['data'] 
+        if len(all_activities) == 0: continue #breaks if no activities programmed
         daily_survey = [x for x in all_activities if x['name'] == 'Daily Survey'][0]
         weekly_survey = [x for x in all_activities if x['name'] == 'Weekly Survey'][0]
 
@@ -547,7 +552,7 @@ def automations_worker():
                 # Get the number of previously delivered gift card codes.
                 delivered_gift_codes = []
                 try:
-                    delivered_gift_codes = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study.delivered_gift_codes')['data']
+                    delivered_gift_codes = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_v2.delivered_gift_codes')['data']
                 except:
                     pass # 404 error if the Tag has never been created before.
 
@@ -590,7 +595,7 @@ def automations_worker():
                     
                     # Retreive an available gift card code from the study registry and deliver the email. 
                     # NOTE: Not wrapped in try-catch because this Tag MUST exist prior to running this script.
-                    gift_codes = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.college_study.gift_codes')['data']
+                    gift_codes = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.college_study_v2.gift_codes')['data']
                     if len(gift_codes[payout_amount]) > 0:
 
                         # We have a gift card code allocated to send to this participant.
@@ -603,8 +608,8 @@ def automations_worker():
                         if DEBUG_MODE:
                             log.debug(pformat(delivered_gift_codes + [participant_code]))
                         else:
-                            LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study.gift_codes', gift_codes)
-                            LAMP.Type.set_attachment(RESEARCHER_ID, participant['id'], 'org.digitalpsych.college_study.delivered_gift_codes', delivered_gift_codes + [participant_code])
+                            LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_v2.gift_codes', gift_codes)
+                            LAMP.Type.set_attachment(RESEARCHER_ID, participant['id'], 'org.digitalpsych.college_study_v2.delivered_gift_codes', delivered_gift_codes + [participant_code])
                         log.info(f"Marked gift card code {participant_code} as claimed by Participant {participant['id']}.")
                     else:
                         # We have no more gift card codes left - send an alert instead.
@@ -633,7 +638,7 @@ def automations_worker():
                 # Check if we already delivered an intervention for this event (and bail if we did).
                 delivered_interventions = []
                 try:
-                    delivered_interventions = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study.delivered_interventions')['data']
+                    delivered_interventions = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_v2.delivered_interventions')['data']
                 except:
                     pass # 404 error if the Tag has never been created before.
                 last_delivered_time = delivered_interventions[-1]['timestamp'] if len(delivered_interventions) > 0 else 0
@@ -669,7 +674,7 @@ def automations_worker():
                         # Track the delivered intervention (or None) for data purposes. 
                         current = {'timestamp': daily_scores[0][0], 'delivered_on': int(time.time() * 1000), 'intervention': intervention}
                         if not DEBUG_MODE:
-                            LAMP.Type.set_attachment(RESEARCHER_ID, participant['id'], 'org.digitalpsych.college_study.delivered_interventions', delivered_interventions + [current])
+                            LAMP.Type.set_attachment(RESEARCHER_ID, participant['id'], 'org.digitalpsych.college_study_v2.delivered_interventions', delivered_interventions + [current])
                         log.info(f"Marked an intervention {intervention} as triggered on {current['delivered_on']} for Participant {participant['id']}.")
                         slack(f"Marked an intervention {intervention} as triggered on {current['timestamp']} for Participant {participant['id']}.")
                     else:

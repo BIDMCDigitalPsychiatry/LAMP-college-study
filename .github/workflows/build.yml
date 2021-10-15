@@ -1,17 +1,17 @@
-name: Build Image
+name: Build College V2 image
 on:
   push:
     branches: 
-      - master
+      - college_v2
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      - uses: jerray/publish-docker-action@v1.0.3
-        with:
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-          registry: ghcr.io
-          repository: 'bidmcdigitalpsychiatry/lamp-college-study'
-          auto_tag: true
+    - uses: actions/checkout@v2
+    - uses: jerray/publish-docker-action@v1.0.3
+      with:
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        registry: ghcr.io
+        repository: 'bidmcdigitalpsychiatry/lamp-college-study-v2'
+        auto_tag: true
