@@ -522,7 +522,8 @@ def automations_worker():
         log.info(f"Processing Study \"{study['name']}\".")
 
         # Specifically look for the "Daily Survey" and "Weekly Survey" activities.
-        all_activities = LAMP.Activity.all_by_study(study['id'])['data']
+        all_activities = LAMP.Activity.all_by_study(study['id'])['data'] 
+        if len(all_activities) == 0: continue #breaks if no activities programmed
         daily_survey = [x for x in all_activities if x['name'] == 'Daily Survey'][0]
         weekly_survey = [x for x in all_activities if x['name'] == 'Weekly Survey'][0]
 
