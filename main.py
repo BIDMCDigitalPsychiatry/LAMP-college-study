@@ -1,8 +1,11 @@
 import os
 import json
 import LAMP
+import cortex
 import time
+import math
 import random
+import datetime
 import logging
 import requests
 import traceback
@@ -11,10 +14,9 @@ from pprint import pformat
 from threading import Timer
 from functools import reduce
 from flask import Flask, request
+import pandas as pd
 
-#DUMMY COMMENT, for worklflow release
-#ONE MORE DUMMY
-#SECOND
+import module_scheduler
 
 VEGA_SPEC_ALL = {
     "$schema": "https://vega.github.io/schema/vega-lite/v4.json",
@@ -126,30 +128,20 @@ VEGA_SPEC_JOURNAL = {
 
 # [REQUIRED] Environment Variables
 # TODO: Remove all remaining hard-coded text/links.
-# DEBUG_MODE = True if os.getenv("DEBUG_MODE") == "on" else False
-# APP_NAME = os.getenv("APP_NAME")
-# SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
-# PUBLIC_URL = os.getenv("PUBLIC_URL")
-# PUSH_API_KEY = os.getenv("PUSH_API_KEY")
-# PUSH_GATEWAY = os.getenv("PUSH_GATEWAY")
-# PUSH_SLACK_HOOK = os.getenv("PUSH_SLACK_HOOK")
-# LAMP_USERNAME = os.getenv("LAMP_USERNAME")
-# LAMP_PASSWORD = os.getenv("LAMP_PASSWORD")
-# RESEARCHER_ID = os.getenv("RESEARCHER_ID")
-# REDCAP_REQUEST_CODE = os.getenv("REDCAP_REQUEST_CODE")
-# ADMIN_REQUEST_CODE = os.getenv("ADMIN_REQUEST_CODE")
-DEBUG_MODE=True
-APP_NAME="BIDMC COVID-19 College Study V2"
-SUPPORT_EMAIL="collegestudy@bidmc.harvard.edu"
-PUBLIC_URL="college-study-v2.lamp.digital"
-PUSH_API_KEY="n1WHtGTpRByGjeOP"
-PUSH_GATEWAY="app-gateway.lamp.digital"
-PUSH_SLACK_HOOK="TBHRCTGUD/B01FX35F55Y/q6CbAeABXW4VD7coc5mYkTFQ"
-LAMP_USERNAME="admin"
-LAMP_PASSWORD="LAMPLAMP"
-RESEARCHER_ID="4aq1kry81ktrb5v1smvs"
-REDCAP_REQUEST_CODE="4482785823"
-ADMIN_REQUEST_CODE="998746293462043782"
+DEBUG_MODE = True if os.getenv("DEBUG_MODE") == "on" else False
+APP_NAME = os.getenv("APP_NAME")
+SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
+PUBLIC_URL = os.getenv("PUBLIC_URL")
+PUSH_API_KEY = os.getenv("PUSH_API_KEY")
+PUSH_GATEWAY = os.getenv("PUSH_GATEWAY")
+PUSH_SLACK_HOOK = os.getenv("PUSH_SLACK_HOOK")
+LAMP_USERNAME = os.getenv("LAMP_USERNAME")
+LAMP_PASSWORD = os.getenv("LAMP_PASSWORD")
+RESEARCHER_ID = os.getenv("RESEARCHER_ID")
+COPY_STUDY_ID = os.getenv("COPY_STUDY_ID")
+REDCAP_REQUEST_CODE = os.getenv("REDCAP_REQUEST_CODE")
+ADMIN_REQUEST_CODE = os.getenv("ADMIN_REQUEST_CODE")
+
 # TODO: Convert to service account and "me" ID. Move all configuration into a Tag on "me".
 
 # Create an HTTP app and connect to the LAMP Platform.
@@ -157,6 +149,20 @@ app = Flask(APP_NAME)
 LAMP.connect(LAMP_USERNAME, LAMP_PASSWORD)
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
+
+#Globals
+MS_IN_A_DAY = 86400000
+LIKERT_OPTIONS = ["0", "1", "2", "3"] # this + below = temporary patch
+ACTIVITY_SCHEDULE = ["thought_patterns_beginner", "journal", "mindfulness_beginner", "games"]
+ACTIVITY_SCHEDULE_MAP = {
+    'mindfulness_beginner': ['Mindfulness Day ' + str(i) for i in range(1, 7)],
+    'thought_patterns_beginner': ['Thought Patterns Day 1', 'Thought Patterns Day 2-7'],
+    'journal': ['Journal Day 1', 'Journal Day 2-7'],
+    'games': ['Distraction Games Day ' + str(i) for i in range(1, 8)]
+}
+TRIAL_SURVEY_SCHEDULE = ['Trial Period Day 1', 'Trial Period Day 2', 'Trial Period Day 3']
+ENROLLMENT_SURVEY_SCHEDULE = ['Morning Daily Survey', 'Afternoon Daily Survey']
+GPS_SAMPLING_THRESHOLD = 0.2
 
 # Helper class to create a repeating timer thread that executes a worker function.
 class RepeatTimer(Timer):
@@ -423,7 +429,7 @@ def index(path):
         
         # Before continuing, verify that the requester's email address has not already been registered.
         # NOTE: Not wrapped in try-catch because this Tag MUST exist prior to running this script.
-        registered_users = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.college_study_v2.registered_users')['data']
+        registered_users = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.college_study_2.registered_users')['data']
         if request_email in registered_users:
             log.warning(f"Email address {request_email} was already in use; aborting registration.")
             return html(f"""<p>You've already signed up for this study.</p>
@@ -433,12 +439,25 @@ def index(path):
         
         # Select a random Study and create a new Participant and assign name and Credential.
         try:
+
+            url = f'https://api.lamp.digital/researcher/{RESEARCHER_ID}/study/clone'
+            headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8','authorization':f"{os.getenv('LAMP_ACCESS_KEY')}:{os.getenv('LAMP_SECRET_KEY')}"}
+            payload = json.dumps({'study_id': COPY_STUDY_ID, 'should_add_participant': 'true', 'name': request_email})
+            r = requests.post(url, data=payload, headers=headers)
+
+            #Find new this new study
             all_studies = LAMP.Study.all_by_researcher(RESEARCHER_ID)['data']
-            selected_study = random.choice(all_studies)
-            participant_id = LAMP.Participant.create(selected_study['id'], {})['data']['id']
-            log.info(f"Created Participant ID {participant_id} under Study {selected_study['name']}.")
+            study_id = [study for study in all_studies if study['name'] == request_email][0]
+            participant_id = LAMP.Participant.all_by_study(study_id)['data'][0]['id']
+
             LAMP.Type.set_attachment(participant_id, 'me', 'lamp.name', request_email)
             LAMP.Credential.create(participant_id, {'origin': participant_id, 'access_key': request_email, 'secret_key': participant_id, 'description': "Generated Login"})
+
+            #Perform initial trial scheduling
+            module_scheduler.schedule_module(participant_id, 'trial_period', start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(15, 0)).timestamp() * 1000))
+            
+            # set enrollment tag
+            LAMP.Type.set_attachment(participant_id, 'org.digitalpsych.college_study_2.enrolled', {'status':'trial', 'timestamp':int(time.time()*1000)}) 
             log.info(f"Configured Participant ID {participant_id} with a generated login credential using {request_email}.")
             #slack(f"Created Participant ID {participant_id} with alias '{request_email}' under Study {selected_study['name']}.")
         except:
@@ -446,7 +465,7 @@ def index(path):
 
         # Notify the requester's email address of this information and mark them in the registered_users Tag.
         push(f"mailto:{request_email}", f"Welcome to mindLAMP.\nThank you for completing the enrollment survey and informed consent process. We have generated an account for you to download the mindLAMP app and get started.\nThis is your password: {participant_id}.\nPlease follow this link to download and login to the app: https://www.digitalpsych.org/college-covid You will need the password given to you in this email.\n")
-        LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_v2.registered_users', registered_users + [request_email])
+        LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_2.registered_users', registered_users + [request_email])
         log.info(f"Completed registration process for {request_email}.")
         return html(f"<p>Further instructions have been emailed to {request_email}.</p>")
 
@@ -522,10 +541,199 @@ def index(path):
     else:
         return html(f"<p>There was an error processing your request.</p>")
 
+#Checks if days since start
+def trial_worker(participant_id, study_id, days_since_start_trial):
+    #We need to check:
+    # 1. Dummy activities complete
+    # 2. Appropriate sensor data
+
+    if days_since_start_trial < 3: #if in trial period, don't do anyting
+        pass
+
+    else: # attempt to move into enrollment period
+
+        #threshold data check
+        data = LAMP.ActivityEvent.all_by_participant(participant_id)['data']
+        all_activities = LAMP.Activity.all_by_study(study_id)['data'] 
+        trial_surveys = [x for x in all_activities if x['name'] in TRIAL_SURVEY_SCHEDULE]
+
+        trial_scores = [(
+            event['timestamp'],
+            sum(map(lambda slice: LIKERT_OPTIONS.index(slice['value']) if slice.get('value', None) in LIKERT_OPTIONS else 0, event['temporal_slices'])))
+            for event in data if event['activity'] in [s['id'] for s in trial_surveys]
+        ]        
+
+        gps_df = pd.DataFrame.from_dict(cortex.secondary.data_quality.data_quality(id=participant_id,
+                                               start=int(time.time() * 1000) - days_since_start_trial * MS_IN_A_DAY - 1,
+                                               end=int(time.time() * 1000),
+                                               resolution=MS_IN_A_DAY,
+                                               feature="gps",
+                                               bin_size=1000 * 60)['data'])
+
+        # If # of trial surveys or GPS sampling frequency does not meet threshold
+        if len(trial_scores) < len(trial_surveys) or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
+
+            #does not meet threshold; do not enroll
+            push(f"mailto:{SUPPORT_EMAIL}", f"Participant {participant_id} did not meet data quality threshold in the trial period  (days_since_start = {str(days_since_start_trial)}). Please discontinue.")
+            return 
+
+        # set support phone as tip
+        support_number_text = "What is the phone number of your college mental health center?"
+        support_number_value = [map(lambda slice: slice['value'] if slice.get('text') == support_number_text, event['temporal_slices'])
+            for event in data if event['activity'] in [s['id'] for s in trial_surveys]
+        ][0]
+
+        act_dict = {'spec': 'lamp.tips',
+                    'name': 'Support Number',
+                    'settings': {
+                        'title': 'Support Number',
+                        'text': 'Your support number is listed as ' + support_number_value + '.\n Please contact them if you are experiencing feelings of self-harm.'
+                    }
+                    'schedule': []
+                    }
+        
+        LAMP.Activity.create(study_id=study_id, activity_activity=act_dict)
+
+        # change to enroll by running enrolled worker
+        LAMP.Type.set_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled', {'status':'enrolled', 'timestamp':int(time.time()*1000)})
+        enrollment_worker(participant_id, study_id, days_since_start_enrollment=0)
+
+
+#Sends appropriate automation, payment, to enrolled participants
+def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
+    # Send a gift card if AT LEAST one "Weekly Survey" was completed today AND they did not already claim one.
+    # Weekly scores are a filtered list of events in the format: (timestamp, sum(temporal_slices.value)) (DESC order.)
+    # NOTE: For this survey only question #9 (PHQ-9 suicide, slice 8:9) is considered as part of the score.
+
+    data = LAMP.ActivityEvent.all_by_participant(participant_id)['data']
+    all_activities = LAMP.Activity.all_by_study(study_id)['data'] 
+    weekly_survey = [x for x in all_activities if x['name'] == 'Weekly Survey'][0]
+    weekly_scores = [(
+        event['timestamp'],
+        sum(map(lambda slice: LIKERT_OPTIONS.index(slice['value']) if slice.get('value', None) in LIKERT_OPTIONS else 0, event['temporal_slices'][8:9])))
+        for event in data if event['activity'] == weekly_survey['id']
+    ]
+
+    daily_surveys = [x for x in all_activities if x['name'] in ['Morning Daily Survey', 'Afternoon Daily Survey']]
+    daily_scores = [(
+        event['timestamp'],
+        sum(map(lambda slice: LIKERT_OPTIONS.index(slice['value']) if slice.get('value', None) in LIKERT_OPTIONS else 0, event['temporal_slices'][8:9])))
+        for event in data if event['activity'] in [s['id'] for s in daily_surveys]
+    ]
+
+    if len(weekly_scores) >= 1:
+        # TODO: Catch "None" responses in the survey.
+
+        # Calculate the number of days between the latest Weekly Survey and the very first ActivityEvent recorded for this pt.
+        # NOTE: (weekly_scores[0][0] - data[-1]['timestamp']) yields "number of days since start AT TIME OF SURVEY".
+        #       This conditional logic behavior is completely different than the one implemented below:
+
+        # Get the number of previously delivered gift card codes.
+        delivered_gift_codes = []
+        try:
+            delivered_gift_codes = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_2.delivered_gift_codes')['data']
+        except:
+            pass # 404 error if the Tag has never been created before.
+
+        # Confirm the payout amount if appropriate or bail.
+        payout_amount = None
+        if len(delivered_gift_codes) == 0 and len(weekly_scores) >= 1 and days_since_start_enrollment >= 7:
+            payout_amount = "$15"
+        elif len(delivered_gift_codes) == 1 and len(weekly_scores) >= 2 and days_since_start_enrollment >= 21:
+            payout_amount = "$15"
+        elif len(delivered_gift_codes) == 2 and len(weekly_scores) >= 2 and days_since_start_enrollment >= 28:
+            payout_amount = "$20"
+        else:
+            log.info(f"No gift card codes to deliver to Participant {participant_id} -- already delivered {len(delivered_gift_codes)}.")
+
+        # Begin the process of vending the payout amount. Also used to track whether we have sent a PHQ-9 notice.
+        if payout_amount is not None:
+            log.info(f"Participant {participant_id} was approved for a payout of amount {payout_amount}.")
+            #slack(f"Participant {participant_id} was approved for a payout of amount {payout_amount}.")
+
+            #Retrieve the Participant's email address from their assigned Credential.
+            email_address = LAMP.Credential.list(participant_id)['data'][0]['access_key']
+            
+            # Continue Gift Card processing after attending to PHQ-9 suicide Q score -> push notification.
+            log.info(f"Participant {participant_id} reported PHQ9 Q9 value of {weekly_scores[-1][1]}.")
+            if weekly_scores[-1][1] >= 3: #"Nearly every day"
+                
+                # Determine the Participant's device push token or bail if none is configured.
+                analytics = LAMP.SensorEvent.all_by_participant(participant_id, origin="lamp.analytics")['data']
+                all_devices = [event['data'] for event in analytics if 'device_token' in event['data']]
+                if len(all_devices) > 0:
+                    device = f"{'apns' if all_devices[0]['device_type'] == 'iOS' else 'gcm'}:{all_devices[0]['device_token']}"
+
+                    #push support activity
+                    push(device, f"Thank you for completing your weekly survey. Because your responses are not monitored in real time, we would like to remind you of some other resources that you can access if you are considering self-harm. Please see your 'Support Number' activity in which you have entered a support line through your university. The national suicide prevention line is a 24/7 toll-free service that can be accessed by dialing 1-800-273-8255.")
+                    
+                    # Record success/failure to send push notification.
+                    push(f"mailto:{SUPPORT_EMAIL}", f"[URGENT] Participant {participant_id} reported an 3 on question 9 of PHQ-9. Please get in touch with this participant's support contact.")
+                    log.info(f"Sent PHQ-9 notice to Participant {participant_id} via push notification.")
+                    #slack(f"Participant {participant_id} reported PHQ9 Q9 value of {weekly_scores[-1][1]}; sent push notification notice.")
+                else:
+                    log.warning(f"PHQ-9 notice failed: no applicable devices registered for Participant {participant_id}.")
+                    #slack(f"[URGENT] FAILED TO SEND PHQ-9 NOTICE TO Participant {participant_id}: reported PHQ9 Q9 value of {weekly_scores[-1][1]}.")
+            
+            # Retreive an available gift card code from the study registry and deliver the email. 
+            # NOTE: Not wrapped in try-catch because this Tag MUST exist prior to running this script.
+            gift_codes = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.college_study_2.gift_codes')['data']
+            if len(gift_codes[payout_amount]) > 0:
+                # We have a gift card code allocated to send to this participant.
+                participant_code = gift_codes[payout_amount].pop()
+                push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing your weekly activities! Here's your Amazon Gift Card Code: [{participant_code}]. Please ensure you fill out a payment form ASAP: https://www.digitalpsych.org/college-payment-forms")
+                log.info(f"Delivered gift card code {participant_code} to the Participant {participant_id} via email.")
+                #slack(f"Delivered gift card code {participant_code} to the Participant {participant_id} via email at {email_address}.")
+
+                # Mark the gift card code as claimed by a participant and remove it from the study registry.
+                if DEBUG_MODE:
+                    log.debug(pformat(delivered_gift_codes + [participant_code]))
+                else:
+                    LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_2.gift_codes', gift_codes)
+                    LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_2.delivered_gift_codes', delivered_gift_codes + [participant_code])
+                log.info(f"Marked gift card code {participant_code} as claimed by Participant {participant_id}.")
+            else:
+                # We have no more gift card codes left - send an alert instead.
+                push(f"mailto:{SUPPORT_EMAIL}", f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
+                #slack(f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
+
+            # Additional offboarding/exit survey procedures and update the "lamp.name" to add a FINISHED indicator.
+            if payout_amount == "$s20":
+                push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing the study. Please complete the exit survey: https://redcap.bidmc.harvard.edu/redcap/surveys/?s=PNJ94E8DX4 -- You no longer need to fill out surveys and you can delete the app at any time now! Thank you!")
+                if not DEBUG_MODE:
+                    LAMP.Type.set_attachment(participant_id, 'me', 'lamp.name', f"✅ {email_address}")
+                #slack(f"Delivered EXIT SURVEY and gift card code to the Participant {participant_id} via email at {email_address}.")
+    else:
+        log.info(f"No gift card codes to deliver to Participant {participant_id}.")
+
+    act_dict = all_activities 
+
+    #Check data quality and unenroll if no active data or insufficient passive data in past 5 days
+    gps_df = pd.DataFrame.from_dict(cortex.secondary.data_quality.data_quality(id=participant_id,
+                                       start=int(time.time() * 1000) - 5 * MS_IN_A_DAY - 1,
+                                       end=int(time.time() * 1000),
+                                       resolution=MS_IN_A_DAY,
+                                       feature="gps",
+                                       bin_size=1000 * 60)['data'])
+
+    activity_events_past_5_days = LAMP.ActivityEvent.all_by_participant(participant_id, _from=int(time.time()*1000) - (MS_IN_A_DAY * 5))['data']
+    #IMPORRTANT: add back in gps requirement
+    if len(activity_events_past_5_days) == 0 or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
+        return
+
+    #Change schedule for intervention
+    week_index = math.floor(days_since_start_enrollment / 7)
+    if week_index <= len(ACTIVITY_SCHEDULE) - 1: #schedule new module if not already scheduled
+        module_to_schedule = ACTIVITY_SCHEDULE[week_index]
+        module_scheduler.schedule_module_batch(participant_id, study_id, module_to_schedule, start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(15, 0)).timestamp() * 1000))
+        module_scheduler.unschedule_other_surveys(participant_id, keep_these=['Morning Daily Survey', 'Weekly Survey'] + ACTIVITY_SCHEDULE_MAP[module_to_schedule])
+    else:
+        module_scheduler.unschedule_other_surveys(participant_id, keep_these=[])
+
+
 # The Automations worker listens to changes in the study's patient data and triggers interventions.
 def automations_worker():
     log.info('Awakening automations worker for processing...')
-    LIKERT_OPTIONS = ["0", "1", "2", "3"] # this + below = temporary patch
     REVERSE_CODING = ["i was able to function well today", "today I could handle what came my way"]
 
     # Iterate all participants across all sub-groups in the study.
@@ -536,190 +744,45 @@ def automations_worker():
         # Specifically look for the "Daily Survey" and "Weekly Survey" activities.
         all_activities = LAMP.Activity.all_by_study(study['id'])['data'] 
         if len(all_activities) == 0: continue #breaks if no activities programmed
-        daily_survey = [x for x in all_activities if x['name'] == 'Daily Survey'][0]
-        weekly_survey = [x for x in all_activities if x['name'] == 'Weekly Survey'][0]
 
         # Iterate across all RECENT (only the previous day) patient data.
         all_participants = LAMP.Participant.all_by_study(study['id'])['data']
         for participant in all_participants:
             log.info(f"Processing Participant \"{participant['id']}\".")
             data = LAMP.ActivityEvent.all_by_participant(participant['id'])['data']
-            days_since_start = (data[0]['timestamp'] - data[-1]['timestamp']) / (24 * 60 * 60 * 1000) # MILLISECONDS_PER_DAY
+            days_since_start = (int(time.time() * 1000) - data[-1]['timestamp']) / (24 * 60 * 60 * 1000) # MILLISECONDS_PER_DAY
 
             #Check to see if enrolled tag exists
             try:
-                enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_v2.enrolled')['data']['status']
-                if enrolled != 'trial' and enrolled != 'enrolled':
+                enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled')['data']#['status']
+                enrolled_status, enrolled_timestamp = enrolled['status'], enrolled['timestamp']
+                if enrolled_status != 'trial' and enrolled_status != 'enrolled':
                     log.info(f"Participant \"{participant['id']}\" has an invalid enrollment tag. Please see.")
                     continue
 
             except:
                 if days_since_start > 3:
-                    log.info(f"Participant \"{participant['id']}\" has been participating past the trial period, yet ")
+                    log.info(f"WARNING: Participant \"{participant['id']}\" has been participating past the trial period, yet does not have an enrolled tag.")
                 #Make enrolled tag 
-                enrolled = 'trial'
-                LAMP.Type.set_attachment(participant['id'], 'org.digitalpsych.college_study_v2.enrolled', {'status':enrolled})
+                LAMP.Type.set_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled', {'status':'trial', 'timestamp':int(time.time()*1000)}) 
+                enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled')['data']#['status']
+                enrolled_status, enrolled_timestamp = enrolled['status'], enrolled['timestamp']
 
+            if enrolled_status == 'trial':
+                #Check for elapsed time of account to see in trial period or not
+                #Use activity events,
+                days_since_start_trial = (int(time.time() * 1000) - enrolled_timestamp) / (24 * 60 * 60 * 1000)
+                trial_worker(participant['id'], study['id'], days_since_start_trial)
 
-            #Check for elapsed time of account to see in trial period or not
-            if enrolled == 'trial':
-                trial_worker(participant['id'])
-            elif enrolled == 'enrolled':
-                enrollment_worker(participant['id'])
+            elif enrolled_status == 'enrolled':
+                days_since_start_enrollment = (int(time.time() * 1000) - enrolled_timestamp) / (24 * 60 * 60 * 1000)
+                enrollment_worker(participant['id'], study['id'], days_since_start_enrollment)
 
             else:
                 log.info(f"Participant \"{participant['id']}\" has an invalid enrollment tag. Please see.")
                 continue
 
-            # Send a gift card if AT LEAST one "Weekly Survey" was completed today AND they did not already claim one.
-            # Weekly scores are a filtered list of events in the format: (timestamp, sum(temporal_slices.value)) (DESC order.)
-            # NOTE: For this survey only question #9 (PHQ-9 suicide, slice 8:9) is considered as part of the score.
-            weekly_scores = [(
-                event['timestamp'],
-                sum(map(lambda slice: LIKERT_OPTIONS.index(slice['value']) if slice.get('value', None) in LIKERT_OPTIONS else 0, event['temporal_slices'][8:9])))
-                for event in data if event['activity'] == weekly_survey['id']
-            ]
-            if len(weekly_scores) >= 1:
-                # TODO: Catch "None" responses in the survey.
 
-                # Calculate the number of days between the latest Weekly Survey and the very first ActivityEvent recorded for this pt.
-                # NOTE: (weekly_scores[0][0] - data[-1]['timestamp']) yields "number of days since start AT TIME OF SURVEY".
-                #       This conditional logic behavior is completely different than the one implemented below:
-
-                # Get the number of previously delivered gift card codes.
-                delivered_gift_codes = []
-                try:
-                    delivered_gift_codes = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_v2.delivered_gift_codes')['data']
-                except:
-                    pass # 404 error if the Tag has never been created before.
-
-                # Confirm the payout amount if appropriate or bail.
-                payout_amount = None
-                if len(delivered_gift_codes) == 0 and len(weekly_scores) >= 1 and days_since_start >= 7:
-                    payout_amount = "$15"
-                elif len(delivered_gift_codes) == 1 and len(weekly_scores) >= 2 and days_since_start >= 21:
-                    payout_amount = "$15"
-                elif len(delivered_gift_codes) == 2 and len(weekly_scores) >= 2 and days_since_start >= 28:
-                    payout_amount = "$20"
-                else:
-                    log.info(f"No gift card codes to deliver to Participant {participant['id']} -- already delivered {len(delivered_gift_codes)}.")
-
-                # Begin the process of vending the payout amount. Also used to track whether we have sent a PHQ-9 notice.
-                if payout_amount is not None:
-                    log.info(f"Participant {participant['id']} was approved for a payout of amount {payout_amount}.")
-                    #slack(f"Participant {participant['id']} was approved for a payout of amount {payout_amount}.")
-
-                    # Retrieve the Participant's email address from their assigned Credential.
-                    email_address = LAMP.Credential.list(participant['id'])['data'][0]['access_key']
-                    
-                    # Continue Gift Card processing after attending to PHQ-9 suicide Q score -> push notification.
-                    log.info(f"Participant {participant['id']} reported PHQ9 Q9 value of {weekly_scores[-1][1]}.")
-                    if weekly_scores[-1][1] >= 3: #"Nearly every day"
-                        
-                        # Determine the Participant's device push token or bail if none is configured.
-                        analytics = LAMP.SensorEvent.all_by_participant(participant['id'], origin="lamp.analytics")['data']
-                        all_devices = [event['data'] for event in analytics if 'device_token' in event['data']]
-                        if len(all_devices) > 0:
-                            device = f"{'apns' if all_devices[0]['device_type'] == 'iOS' else 'gcm'}:{all_devices[0]['device_token']}"
-                            push(device, f"Thank you for completing your weekly survey. Based on your responses, a member of the research team will reach out within 24 hours. Because your responses are not monitored in real time, we would like to remind you of some other resources that you can access if you are considering self-harm. The national suicide prevention line is a 24/7 toll-free service that can be accessed by dialing 1-800-273-8255. You may also reach out to the principal investigator of this study, Dr. John Torous, MD, by dialing 1-510-684-6827.")
-                            
-                            # Record success/failure to send push notification.
-                            log.info(f"Sent PHQ-9 notice to Participant {participant['id']} via push notification.")
-                            #slack(f"Participant {participant['id']} reported PHQ9 Q9 value of {weekly_scores[-1][1]}; sent push notification notice.")
-                        else:
-                            log.warning(f"PHQ-9 notice failed: no applicable devices registered for Participant {participant['id']}.")
-                            #slack(f"[URGENT] FAILED TO SEND PHQ-9 NOTICE TO Participant {participant['id']}: reported PHQ9 Q9 value of {weekly_scores[-1][1]}.")
-                    
-                    # Retreive an available gift card code from the study registry and deliver the email. 
-                    # NOTE: Not wrapped in try-catch because this Tag MUST exist prior to running this script.
-                    gift_codes = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.college_study_v2.gift_codes')['data']
-                    if len(gift_codes[payout_amount]) > 0:
-
-                        # We have a gift card code allocated to send to this participant.
-                        participant_code = gift_codes[payout_amount].pop()
-                        push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing your weekly activities! Here's your Amazon Gift Card Code: [{participant_code}]. Please ensure you fill out a payment form ASAP: https://www.digitalpsych.org/college-payment-forms")
-                        log.info(f"Delivered gift card code {participant_code} to the Participant {participant['id']} via email.")
-                        #slack(f"Delivered gift card code {participant_code} to the Participant {participant['id']} via email at {email_address}.")
-
-                        # Mark the gift card code as claimed by a participant and remove it from the study registry.
-                        if DEBUG_MODE:
-                            log.debug(pformat(delivered_gift_codes + [participant_code]))
-                        else:
-                            LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_v2.gift_codes', gift_codes)
-                            LAMP.Type.set_attachment(RESEARCHER_ID, participant['id'], 'org.digitalpsych.college_study_v2.delivered_gift_codes', delivered_gift_codes + [participant_code])
-                        log.info(f"Marked gift card code {participant_code} as claimed by Participant {participant['id']}.")
-                    else:
-                        # We have no more gift card codes left - send an alert instead.
-                        push(f"mailto:{SUPPORT_EMAIL}", f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
-                        #slack(f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
-
-                    # Additional offboarding/exit survey procedures and update the "lamp.name" to add a FINISHED indicator.
-                    if payout_amount == "$20":
-                        push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing the study. Please complete the exit survey: https://redcap.bidmc.harvard.edu/redcap/surveys/?s=PNJ94E8DX4 -- You no longer need to fill out surveys and you can delete the app at any time now! Thank you!")
-                        if not DEBUG_MODE:
-                            LAMP.Type.set_attachment(participant['id'], 'me', 'lamp.name', f"✅ {email_address}")
-                        #slack(f"Delivered EXIT SURVEY and gift card code to the Participant {participant['id']} via email at {email_address}.")
-            else:
-                log.info(f"No gift card codes to deliver to Participant {participant['id']}.")
-            
-            # Trigger a (RANDOM) intervention IFF [Mood.score += 3 OR Anxiety.score +=3]. (Now called "Daily Survey".)
-            # Daily scores are a filtered list of events in the format: (timestamp, sum(temporal_slices.value)) (DESC order.)
-            # The questions to be reverse coded (lowercase-matched) are also flipped.
-            daily_scores = [(
-                event['timestamp'],
-                sum(map(lambda slice: (((-len(LIKERT_OPTIONS) if slice.get('item', None) in REVERSE_CODING else 0) + LIKERT_OPTIONS.index(slice['value'])) if slice.get('value', None) in LIKERT_OPTIONS else 0), event['temporal_slices'])))
-                for event in data if event['activity'] == daily_survey['id']
-            ]
-            if len(daily_scores) >= 2 and (daily_scores[0][1] - daily_scores[1][1]) >= 3:
-
-                # Check if we already delivered an intervention for this event (and bail if we did).
-                delivered_interventions = []
-                try:
-                    delivered_interventions = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_v2.delivered_interventions')['data']
-                except:
-                    pass # 404 error if the Tag has never been created before.
-                last_delivered_time = delivered_interventions[-1]['timestamp'] if len(delivered_interventions) > 0 else 0
-                if daily_scores[0][0] > last_delivered_time:
-
-                    # Determine the Participant's device push token or bail if none is configured.
-                    analytics = LAMP.SensorEvent.all_by_participant(participant['id'], origin="lamp.analytics")['data']
-                    all_devices = [event['data'] for event in analytics if 'device_token' in event['data']]
-                    if len(all_devices) > 0:
-                        device = f"{'apns' if all_devices[0]['device_type'] == 'iOS' else 'gcm'}:{all_devices[0]['device_token']}"
-                        
-                        # Determine one of three random interventions and deliver it to the Participant's Feed.
-                        intervention = random.choice(['lamp.journal', 'lamp.breathe', None])
-                        if intervention == 'lamp.journal':
-                            activity = [x for x in all_activities if x['spec'] == intervention]
-                            if len(activity) > 0:
-                                push(device, f"You have a new mindLAMP activity: {activity[0]['name']}")
-                                log.info(f"Delivered an intervention to Participant {participant['id']}.")
-                            else:
-                                log.error(f"No such intervention \"{intervention}\" to deliver to Participant {participant['id']}.")
-                        elif intervention == 'lamp.breathe':
-                            activity = [x for x in all_activities if x['spec'] == intervention]
-                            if len(activity) > 0:
-                                push(device, f"You have a new mindLAMP activity: {activity[0]['name']}")
-                                log.info(f"Delivered an intervention to Participant {participant['id']}.")
-                            else:
-                                log.error(f"No such intervention \"{intervention}\" to deliver to Participant {participant['id']}.")
-                        else:
-                            # Send a placebo message, since the semantics of sensor collection may change if we don't.
-                            push(device, None)
-                            log.info(f"Sent a placebo notification to Participant {participant['id']}.")
-
-                        # Track the delivered intervention (or None) for data purposes. 
-                        current = {'timestamp': daily_scores[0][0], 'delivered_on': int(time.time() * 1000), 'intervention': intervention}
-                        if not DEBUG_MODE:
-                            LAMP.Type.set_attachment(RESEARCHER_ID, participant['id'], 'org.digitalpsych.college_study_v2.delivered_interventions', delivered_interventions + [current])
-                        log.info(f"Marked an intervention {intervention} as triggered on {current['delivered_on']} for Participant {participant['id']}.")
-                        #slack(f"Marked an intervention {intervention} as triggered on {current['timestamp']} for Participant {participant['id']}.")
-                    else:
-                        log.warning(f"Skipping; no applicable devices registered for Participant {participant['id']}.")
-                else:
-                    log.info(f"Skipping; already processed an earlier intervention for Participant {participant['id']}.")
-            else:
-                log.info(f"No interventions to deliver to Participant {participant['id']}.")
     log.info('Sleeping automations worker...')
     #slack(f"Completed processing.")
 
