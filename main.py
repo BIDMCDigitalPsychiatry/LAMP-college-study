@@ -579,16 +579,20 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
 
         # set support phone as tip
         support_number_text = "What is the phone number of your college mental health center?"
-        support_number_value = [map(lambda slice: slice['value'] if slice.get('text') == support_number_text, event['temporal_slices'])
-            for event in data if event['activity'] in [s['id'] for s in trial_surveys]
-        ][0]
+        for event in data:
+            if event['activity'] in [ts['id'] for ts in trial_surveys]:
+                for s in event['data']:
+                    if s['text'] == support_number_text:
+                        support_number_value = s['value']
+                        break
+        #support_number_value = [s['value'] if s['text'] == support_number_text for s in event['data'] for event in data if event['activity'] in [ts['id'] for ts in trial_surveys]][0]
 
         act_dict = {'spec': 'lamp.tips',
                     'name': 'Support Number',
                     'settings': {
                         'title': 'Support Number',
                         'text': 'Your support number is listed as ' + support_number_value + '.\n Please contact them if you are experiencing feelings of self-harm.'
-                    }
+                    },
                     'schedule': []
                     }
         
