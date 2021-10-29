@@ -745,6 +745,7 @@ def automations_worker():
     for study in all_studies:
         log.info(f"Processing Study \"{study['name']}\".")
 
+        if study['id'] == COPY_STUDY_ID: continue
         # Specifically look for the "Daily Survey" and "Weekly Survey" activities.
         all_activities = LAMP.Activity.all_by_study(study['id'])['data'] 
         if len(all_activities) == 0: continue #breaks if no activities programmed
@@ -754,6 +755,7 @@ def automations_worker():
         for participant in all_participants:
             log.info(f"Processing Participant \"{participant['id']}\".")
             data = LAMP.ActivityEvent.all_by_participant(participant['id'])['data']
+            if len(data) == 0: continue
             days_since_start = (int(time.time() * 1000) - data[-1]['timestamp']) / (24 * 60 * 60 * 1000) # MILLISECONDS_PER_DAY
 
             #Check to see if enrolled tag exists
