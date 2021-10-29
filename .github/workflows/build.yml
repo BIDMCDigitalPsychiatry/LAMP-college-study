@@ -8,9 +8,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - uses: jerray/publish-docker-action@v1.0.3
+    - uses: BSFishy/pip-action@v1
       with:
         packages: LAMP-cortex
+    - uses: jerray/publish-docker-action@v1.0.3
+      with:
         username: ${{ github.repository_owner }}
         password: ${{ secrets.GITHUB_TOKEN }}
         registry: ghcr.io
