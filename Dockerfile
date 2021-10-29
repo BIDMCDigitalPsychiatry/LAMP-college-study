@@ -1,4 +1,4 @@
-FROM python:3.7
+FROM python:3.9
 COPY requirements.txt /tmp/
 RUN pip install git+https://github.com/BIDMCDigitalPsychiatry/LAMP-cortex.git
 RUN pip install -r /tmp/requirements.txt
