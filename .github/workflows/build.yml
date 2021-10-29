@@ -8,9 +8,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - uses: actions/setup-python
-    - name: Install LAMP-cortex 
-      run: pip install LAMP-cortex
+    - uses: BSFishy/pip-action@v1
+      with:
+        packages: |
+          LAMP-cortex
     - uses: jerray/publish-docker-action@v1.0.3
       with:
         username: ${{ github.repository_owner }}
