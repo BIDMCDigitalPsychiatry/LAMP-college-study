@@ -1,4 +1,4 @@
 Flask==1.1.2
 requests==2.24.0
 LAMP-core==1.0.5
-LAMP-cortex==2021.10.12
+lamp-cortex==2021.10.12
