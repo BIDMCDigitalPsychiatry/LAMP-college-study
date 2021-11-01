@@ -447,19 +447,21 @@ def index(path):
 
             #Find new this new study
             all_studies = LAMP.Study.all_by_researcher(RESEARCHER_ID)['data']
-            study_id = [study for study in all_studies if study['name'] == request_email][0]
-            log.info([study for study in all_studies if study['name'] == request_email])
-            participant_id = LAMP.Participant.all_by_study(study_id['id'])['data'][0]['id']
+            study_id = [study for study in all_studies if study['name'] == request_email][0]['id']
+            participant_id = LAMP.Participant.all_by_study(study_id)['data'][0]['id']
             LAMP.Type.set_attachment(participant_id, 'me', 'lamp.name', request_email)
-            LAMP.Credential.create(participant_id, {'origin': participant_id, 'access_key': request_email, 'secret_key': participant_id, 'description': "Generated Login"})
 
             #Perform initial trial scheduling
             module_scheduler.schedule_module(participant_id, 'trial_period', start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(15, 0)).timestamp() * 1000))
             
             # set enrollment tag
             LAMP.Type.set_attachment(participant_id, 'org.digitalpsych.college_study_2.enrolled', {'status':'trial', 'timestamp':int(time.time()*1000)}) 
+            
+            #Create credential
+            LAMP.Credential.create(participant_id, {'origin': participant_id, 'access_key': request_email, 'secret_key': participant_id, 'description': "Generated Login"})
+
             log.info(f"Configured Participant ID {participant_id} with a generated login credential using {request_email}.")
-            #slack(f"Created Participant ID {participant_id} with alias '{request_email}' under Study {selected_study['name']}.")
+
         except:
             log.exception("API ERROR")
 
