@@ -449,6 +449,7 @@ def index(path):
             all_studies = LAMP.Study.all_by_researcher(RESEARCHER_ID)['data']
             study_id = [study for study in all_studies if study['name'] == request_email][0]
             participant_id_create = LAMP.Participant.create(study_id, participant_participant={})['data']#[0]['id'] #create study id
+            log.info(participant_id_create, study_id)
             if len(participant_id_create) > 1:
                 log.info('WARNING: multiple participant for study ' + study_id)
  
