@@ -449,11 +449,9 @@ def index(path):
             all_studies = LAMP.Study.all_by_researcher(RESEARCHER_ID)['data']
             study_id = [study for study in all_studies if study['name'] == request_email][0]
             participant_id_create = LAMP.Participant.create(study_id, participant_participant={})['data']#[0]['id'] #create study id
-            log.info(participant_id_create, study_id)
-            if len(participant_id_create) > 1:
-                log.info('WARNING: multiple participant for study ' + study_id)
+            log.info(participant_id_create['id'], study_id)
  
-            participant_id = participant_id_create[0]['id']
+            participant_id = participant_id_create['id']
             LAMP.Type.set_attachment(participant_id, 'me', 'lamp.name', request_email)
             LAMP.Credential.create(participant_id, {'origin': participant_id, 'access_key': request_email, 'secret_key': participant_id, 'description': "Generated Login"})
 
