@@ -572,13 +572,6 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
                                                feature="gps",
                                                bin_size=1000 * 60)['data'])
 
-        # If # of trial surveys or GPS sampling frequency does not meet threshold
-        if len(trial_scores) < len(trial_surveys) or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
-
-            #does not meet threshold; do not enroll
-            push(f"mailto:{SUPPORT_EMAIL}", f"Participant {participant_id} did not meet data quality threshold in the trial period  (days_since_start = {str(days_since_start_trial)}). Please discontinue.")
-            return 
-
         # set support phone as tip
         support_number_text = "What is the phone number of your college mental health center?"
         for event in data:
@@ -599,6 +592,16 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
                     }
         
         LAMP.Activity.create(study_id=study_id, activity_activity=act_dict)
+
+        print(LAMP.Activity.all_by_participant(participant_id))
+        # If # of trial surveys or GPS sampling frequency does not meet threshold
+        if len(trial_scores) < len(trial_surveys) or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
+
+            #does not meet threshold; do not enroll
+            log.info(f"mailto:{SUPPORT_EMAIL}", f"Participant {participant_id} did not meet data quality threshold in the trial period  (days_since_start = {str(days_since_start_trial)}). Please discontinue.")
+            push(f"mailto:{SUPPORT_EMAIL}", f"Participant {participant_id} did not meet data quality threshold in the trial period  (days_since_start = {str(days_since_start_trial)}). Please discontinue.")
+            return 
+
 
         # change to enroll by running enrolled worker
         LAMP.Type.set_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled', {'status':'enrolled', 'timestamp':int(time.time()*1000)})
@@ -772,7 +775,7 @@ def automations_worker():
                 if days_since_start > 3:
                     log.info(f"WARNING: Participant \"{participant['id']}\" has been participating past the trial period, yet does not have an enrolled tag.")
                 #Make enrolled tag 
-                LAMP.Type.set_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled', {'status':'trial', 'timestamp':int(time.time()*1000)}) 
+                LAMP.Type.set_attachment(participant['id'], 'me', 'org.digitalpsych.college_study_2.enrolled', {'status':'trial', 'timestamp':int(time.time()*1000)}) 
                 enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled')['data']#['status']
                 enrolled_status, enrolled_timestamp = enrolled['status'], enrolled['timestamp']
 
