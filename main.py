@@ -549,7 +549,8 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
     # 1. Dummy activities complete
     # 2. Appropriate sensor data
 
-    if days_since_start_trial < 3: #if in trial period, don't do anyting
+    #NOTE: CHANGE THI BACK!!!
+    if days_since_start_trial < 0: #if in trial period, don't do anyting
         pass
 
     else: # attempt to move into enrollment period
@@ -566,7 +567,7 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
         ]        
 
         gps_df = pd.DataFrame.from_dict(cortex.secondary.data_quality.data_quality(id=participant_id,
-                                               start=int(time.time() * 1000) - days_since_start_trial * MS_IN_A_DAY - 1,
+                                               start=int(time.time() * 1000 - (days_since_start_trial + 1) * MS_IN_A_DAY),
                                                end=int(time.time() * 1000),
                                                resolution=MS_IN_A_DAY,
                                                feature="gps",
@@ -576,35 +577,41 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
         support_number_text = "What is the phone number of your college mental health center?"
         for event in data:
             if event['activity'] in [ts['id'] for ts in trial_surveys]:
-                for s in event['data']:
-                    if s['text'] == support_number_text:
+                for s in event['temporal_slices']:
+                    if s['item'] == support_number_text:
                         support_number_value = s['value']
                         break
         #support_number_value = [s['value'] if s['text'] == support_number_text for s in event['data'] for event in data if event['activity'] in [ts['id'] for ts in trial_surveys]][0]
-
-        act_dict = {'spec': 'lamp.tips',
-                    'name': 'Support Number',
-                    'settings': {
-                        'title': 'Support Number',
-                        'text': 'Your support number is listed as ' + support_number_value + '.\n Please contact them if you are experiencing feelings of self-harm.'
-                    },
-                    'schedule': []
-                    }
         
-        LAMP.Activity.create(study_id=study_id, activity_activity=act_dict)
+        safety_plan = [act for act in LAMP.Activity.all_by_participant(participant_id)['data'] if act['name'] == 'Safety Plan'][0]
+        safety_plan_dict_updated = {
+                                    'spec': safety_plan['spec'],
+                                    'name': safety_plan['name'],
+                                    'settings': safety_plan['settings'] +
+                                                [{'title': 'College Mental Health Center',
+                                                 'text': 'Your support number is listed as ' + support_number_value + '.\n Please contact them if you are experiencing feelings of self-harm.'
+                                                 }],
+                                    'schedule':[] 
+                                     }
 
-        print(LAMP.Activity.all_by_participant(participant_id))
+        try:
+            LAMP.Activity.update(activity_id=safety_plan['id'], activity_activity=safety_plan_dict_updated)
+        except LAMP.exceptions.ApiTypeError:
+            pass
+
         # If # of trial surveys or GPS sampling frequency does not meet threshold
-        if len(trial_scores) < len(trial_surveys) or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
+        # if len(trial_scores) < len(trial_surveys) or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
 
-            #does not meet threshold; do not enroll
-            log.info(f"mailto:{SUPPORT_EMAIL}", f"Participant {participant_id} did not meet data quality threshold in the trial period  (days_since_start = {str(days_since_start_trial)}). Please discontinue.")
-            push(f"mailto:{SUPPORT_EMAIL}", f"Participant {participant_id} did not meet data quality threshold in the trial period  (days_since_start = {str(days_since_start_trial)}). Please discontinue.")
-            return 
+        #     #does not meet threshold; do not enroll
+        #     log.info(f"mailto:{SUPPORT_EMAIL}", f"Participant {participant_id} did not meet data quality threshold in the trial period  (days_since_start = {str(days_since_start_trial)}). Please discontinue.")
+        #     push(f"mailto:{SUPPORT_EMAIL}", f"Participant {participant_id} did not meet data quality threshold in the trial period  (days_since_start = {str(days_since_start_trial)}). Please discontinue.")
+        #     return 
 
 
-        # change to enroll by running enrolled worker
-        LAMP.Type.set_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled', {'status':'enrolled', 'timestamp':int(time.time()*1000)})
+        # change to enroll by scheduling morning daily/weekly survey running enrolled worker
+        module_scheduler.schedule_module(participant_id, 'Morning Daily Survey', start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(10, 0)).timestamp() * 1000))
+        module_scheduler.schedule_module(participant_id, 'Weekly Survey', start_time=int(datetime.datetime.combine((datetime.datetime.now() + datetime.timedelta(days=7)).date(), datetime.time(10, 0)).timestamp() * 1000))
+        LAMP.Type.set_attachment(participant_id, 'me', 'org.digitalpsych.college_study_2.enrolled', {'status':'enrolled', 'timestamp':int(time.time()*1000)})
         enrollment_worker(participant_id, study_id, days_since_start_enrollment=0)
 
 
@@ -614,12 +621,13 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
     # Weekly scores are a filtered list of events in the format: (timestamp, sum(temporal_slices.value)) (DESC order.)
     # NOTE: For this survey only question #9 (PHQ-9 suicide, slice 8:9) is considered as part of the score.
 
+    # If entering into enrollment, schedule weekly, daily survey consistently
     data = LAMP.ActivityEvent.all_by_participant(participant_id)['data']
     all_activities = LAMP.Activity.all_by_study(study_id)['data'] 
     weekly_survey = [x for x in all_activities if x['name'] == 'Weekly Survey'][0]
     weekly_scores = [(
         event['timestamp'],
-        sum(map(lambda slice: LIKERT_OPTIONS.index(slice['value']) if slice.get('value', None) in LIKERT_OPTIONS else 0, event['temporal_slices'][8:9])))
+        event['temporal_slices'][8].get('value', None))
         for event in data if event['activity'] == weekly_survey['id']
     ]
 
@@ -629,6 +637,31 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
         sum(map(lambda slice: LIKERT_OPTIONS.index(slice['value']) if slice.get('value', None) in LIKERT_OPTIONS else 0, event['temporal_slices'][8:9])))
         for event in data if event['activity'] in [s['id'] for s in daily_surveys]
     ]
+
+    #Retrieve the Participant's email address from their assigned Credential.
+    email_address = LAMP.Credential.list(participant_id)['data'][0]['access_key']
+    
+    # Continue processing after attending to PHQ-9 suicide Q score -> push notification in past 3 hours
+    weekly_scores_3_hrs = [s for s in weekly_scores if s[0] >= int(time.time()*1000) - (1000 * 60 * 60 * 3)]
+    for _, score in weekly_scores_3_hrs:
+        if score == 'Nearly every day':
+            log.info(f"Participant {participant_id} reported PHQ9 Q9 value of {weekly_scores[-1][1]}.")
+                
+            # Determine the Participant's device push token or bail if none is configured.
+            analytics = LAMP.SensorEvent.all_by_participant(participant_id, origin="lamp.analytics")['data']
+            #print(analytics)
+            all_devices = [event['data'] for event in analytics if 'device_token' in event['data']]
+            if len(all_devices) > 0:
+                device = f"{'apns' if all_devices[0]['device_type'] == 'iOS' else 'gcm'}:{all_devices[0]['device_token']}"
+
+                #push support activity
+                push(device, f"Thank you for completing your weekly survey. Because your responses are not monitored in real time, we would like to remind you of some other resources that you can access if you are considering self-harm.\n Please see your 'Safety Plan' activity in which you have entered a support line availablethrough your university. The national suicide prevention line is a 24/7 toll-free service that can be accessed by dialing 1-800-273-8255.")
+                
+                # Record success/failure to send push notification.
+                push(f"mailto:{SUPPORT_EMAIL}", f"[URGENT] Participant {participant_id} reported an 3 on question 9 of PHQ-9.\nPlease get in touch with this participant's support contact.")
+                log.info(f"Sent PHQ-9 notice to Participant {participant_id} via push notification.")
+                #slack(f"Participant {participant_id} reported PHQ9 Q9 value of {weekly_scores[-1][1]}; sent push notification notice.")
+            break
 
     if len(weekly_scores) >= 1:
         # TODO: Catch "None" responses in the survey.
@@ -659,30 +692,6 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
         if payout_amount is not None:
             log.info(f"Participant {participant_id} was approved for a payout of amount {payout_amount}.")
             #slack(f"Participant {participant_id} was approved for a payout of amount {payout_amount}.")
-
-            #Retrieve the Participant's email address from their assigned Credential.
-            email_address = LAMP.Credential.list(participant_id)['data'][0]['access_key']
-            
-            # Continue Gift Card processing after attending to PHQ-9 suicide Q score -> push notification.
-            log.info(f"Participant {participant_id} reported PHQ9 Q9 value of {weekly_scores[-1][1]}.")
-            if weekly_scores[-1][1] >= 3: #"Nearly every day"
-                
-                # Determine the Participant's device push token or bail if none is configured.
-                analytics = LAMP.SensorEvent.all_by_participant(participant_id, origin="lamp.analytics")['data']
-                all_devices = [event['data'] for event in analytics if 'device_token' in event['data']]
-                if len(all_devices) > 0:
-                    device = f"{'apns' if all_devices[0]['device_type'] == 'iOS' else 'gcm'}:{all_devices[0]['device_token']}"
-
-                    #push support activity
-                    push(device, f"Thank you for completing your weekly survey. Because your responses are not monitored in real time, we would like to remind you of some other resources that you can access if you are considering self-harm. Please see your 'Support Number' activity in which you have entered a support line through your university. The national suicide prevention line is a 24/7 toll-free service that can be accessed by dialing 1-800-273-8255.")
-                    
-                    # Record success/failure to send push notification.
-                    push(f"mailto:{SUPPORT_EMAIL}", f"[URGENT] Participant {participant_id} reported an 3 on question 9 of PHQ-9. Please get in touch with this participant's support contact.")
-                    log.info(f"Sent PHQ-9 notice to Participant {participant_id} via push notification.")
-                    #slack(f"Participant {participant_id} reported PHQ9 Q9 value of {weekly_scores[-1][1]}; sent push notification notice.")
-                else:
-                    log.warning(f"PHQ-9 notice failed: no applicable devices registered for Participant {participant_id}.")
-                    #slack(f"[URGENT] FAILED TO SEND PHQ-9 NOTICE TO Participant {participant_id}: reported PHQ9 Q9 value of {weekly_scores[-1][1]}.")
             
             # Retreive an available gift card code from the study registry and deliver the email. 
             # NOTE: Not wrapped in try-catch because this Tag MUST exist prior to running this script.
@@ -727,15 +736,17 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
 
     activity_events_past_5_days = LAMP.ActivityEvent.all_by_participant(participant_id, _from=int(time.time()*1000) - (MS_IN_A_DAY * 5))['data']
     #IMPORRTANT: add back in gps requirement
-    if len(activity_events_past_5_days) == 0 or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
-        return
+    # if len(activity_events_past_5_days) == 0 or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
+    #     return
 
     #Change schedule for intervention
     week_index = math.floor(days_since_start_enrollment / 7)
+    print(week_index)
     if week_index <= len(ACTIVITY_SCHEDULE) - 1: #schedule new module if not already scheduled
         module_to_schedule = ACTIVITY_SCHEDULE[week_index]
+        print(module_to_schedule)
         module_scheduler.schedule_module_batch(participant_id, study_id, module_to_schedule, start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(15, 0)).timestamp() * 1000))
-        module_scheduler.unschedule_other_surveys(participant_id, keep_these=['Morning Daily Survey', 'Weekly Survey'] + ACTIVITY_SCHEDULE_MAP[module_to_schedule])
+        module_scheduler.unschedule_other_surveys(participant_id, keep_these=['Morning Daily Survey', 'Weekly Survey' ,module_to_schedule] + ACTIVITY_SCHEDULE_MAP[module_to_schedule])
     else:
         module_scheduler.unschedule_other_surveys(participant_id, keep_these=[])
 
@@ -758,6 +769,10 @@ def automations_worker():
         # Iterate across all RECENT (only the previous day) patient data.
         all_participants = LAMP.Participant.all_by_study(study['id'])['data']
         for participant in all_participants:
+            #NOTE: CHANGE THI BACK!!!
+            if participant['id'] != "U5240624077":
+                continue
+
             log.info(f"Processing Participant \"{participant['id']}\".")
             data = LAMP.ActivityEvent.all_by_participant(participant['id'])['data']
             if len(data) == 0: continue

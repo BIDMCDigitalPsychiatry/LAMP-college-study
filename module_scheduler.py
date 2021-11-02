@@ -110,7 +110,9 @@ def schedule_module(part_id, module_name, start_time):
     """
     MODULE_NAMES = ["behavioral_activation", "mindfulness_beginner", "thought_patterns_beginner",
                     "thought_patterns_advanced", "journal", "strengths", "gratitude_journal",
-                    "games", "mindfulness_advanced", 'trial_period']
+                    "games", "mindfulness_advanced", 'trial_period', 
+                    "Morning Daily Survey", "Weekly Survey"]
+
     if module_name not in MODULE_NAMES:
         print(module_name + " is not in the list of modules. " + part_id + " has not been scheduled.")
         return
@@ -233,7 +235,19 @@ def schedule_module(part_id, module_name, start_time):
                                  start_time + 4 * MS_IN_DAY,
                                  start_time + 5 * MS_IN_DAY,
                                 ])
-    if sucess == 0:
+
+    elif module_name == "Morning Daily Survey":
+        sucess = _schedule_module_helper(part_id,
+                                    ["Morning Daily Survey",],
+                                    ["daily"],
+                                    [start_time])
+
+    elif module_name == "Weekly Survey":
+        sucess = _schedule_module_helper(part_id,
+                                    ["Weekly Survey",],
+                                    ["weekly"],
+                                    [start_time])
+    if sucess == 0 and module_name in message_text:
         dt = datetime.datetime.fromtimestamp(start_time / 1000)
         dt_iso = dt.isoformat() + 'Z'
         message_data = {"data": []}
@@ -269,13 +283,16 @@ def _schedule_module_helper(part_id, act_names, daily_schedule, start_times):
             curr_dict = act_dict[ind]
             dt = datetime.datetime.fromtimestamp(start_times[k] / 1000)
             dt_iso = dt.isoformat() + 'Z'
-            curr_dict["schedule"].append({
+            curr_dict["schedule"] = [{
                 'start_date': dt_iso,
                 'time': dt_iso,
                 'custom_time': None,
                 'repeat_interval': daily_schedule[k],
-                'notification_ids': [random.randint(1,100000)]})
-            LAMP.Activity.update(activity_id=curr_dict['id'], activity_activity=curr_dict)
+                'notification_ids': [random.randint(1,100000)]}]
+            try:
+                LAMP.Activity.update(activity_id=curr_dict['id'], activity_activity=curr_dict)
+            except:
+                pass
         return 0
     else:
         return -1
@@ -367,7 +384,7 @@ def schedule_module_batch(part_id, study_id, module_name, start_time):
                                  start_time + 4 * MS_IN_DAY,
                                  start_time + 5 * MS_IN_DAY,
                                  start_time + 6 * MS_IN_DAY,])
-    if sucess == 0:
+    if sucess == 0 and module_name in message_text:
         dt = datetime.datetime.fromtimestamp(start_time / 1000)
         dt_iso = dt.isoformat() + 'Z'
         message_data = {"data": []}
@@ -393,7 +410,6 @@ def _schedule_module_helper_batch(part_id, study_id, act_names, daily_schedule, 
             all_act_names_list.append(x)
     if _check_modules(act_dict, all_act_names_list) == 0:
         for j, k in enumerate(act_names.keys()):
-            print(k)
             id_list = []
             for i, act in enumerate(act_names[k]):
                 ind = list(all_act.index[all_act["name"] == act])[0]
@@ -423,6 +439,7 @@ def _schedule_module_helper_batch(part_id, study_id, act_names, daily_schedule, 
                 except LAMP.exceptions.ApiTypeError:
                     continue
             else:
+                print("YO")
                 try:
                     LAMP.Activity.create(study_id=study_id, activity_activity=batch_dict)
                 except LAMP.exceptions.ApiTypeError:
@@ -444,7 +461,6 @@ def _check_modules(act_dict, act_names):
     ret = 0
     for x in act_names:
         if x not in act_list:
-            print(x)
             ret = -1
     return ret
 
@@ -457,7 +473,10 @@ def unschedule_other_surveys(part_id, keep_these=["Morning Daily Survey", "Weekl
         if len(act_dict[i]["schedule"]) > 0:
             if act_dict[i]["name"] not in keep_these:
                 act_dict[i]["schedule"] = []
-                LAMP.Activity.update(activity_id=act_dict[i]['id'], activity_activity=act_dict[i])
+                try:
+                    LAMP.Activity.update(activity_id=act_dict[i]['id'], activity_activity=act_dict[i])
+                except:
+                    pass
 
 
 def set_start_date(curr_time, thurs=1):
