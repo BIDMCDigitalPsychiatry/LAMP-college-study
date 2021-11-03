@@ -315,17 +315,17 @@ def schedule_module_batch(part_id, study_id, module_name, start_time):
                                 {
                                     "Mindfulness Day 1": ["Mindfulness",
                                                           "Day 1 : 5-4-3-2-1 Grounding Technique",
-                                                          "Afternoon Daily Survey",],
+                                                          "Check-in Survey",],
                                     "Mindfulness Day 2": ["Day 2 - Breathe with your Body",
-                                                          "Afternoon Daily Survey",],
+                                                          "Check-in Survey",],
                                     "Mindfulness Day 3": ["Day 3 - Breathing Exercise (Long)",
-                                                          "Afternoon Daily Survey",],
+                                                          "Check-in Survey",],
                                     "Mindfulness Day 4": ["Day 4 - 3 Minute Mindfulness Breathing",
-                                                          "Afternoon Daily Survey",],
+                                                          "Check-in Survey",],
                                     "Mindfulness Day 5": ["Day 5 - 5 Minute Self-Compassion Mindfulness",
-                                                          "Afternoon Daily Survey",],
+                                                          "Check-in Survey",],
                                     "Mindfulness Day 6": ["Day 6 - 6 minute mindfulness",
-                                                          "Afternoon Daily Survey",],
+                                                          "Check-in Survey",],
                                 },
                                 ["none", "none", "none", "none", "none", "none",],
                                 [start_time,
@@ -341,9 +341,9 @@ def schedule_module_batch(part_id, study_id, module_name, start_time):
                                 {
                                     "Thought Patterns Day 1": ["Identifying Thought Patterns",
                                                                "Record, Rationalize, Replace",
-                                                               "Afternoon Daily Survey",],
+                                                               "Check-in Survey",],
                                     "Thought Patterns Day 2-7": ["Record, Rationalize, Replace",
-                                                                 "Afternoon Daily Survey",],
+                                                                 "Check-in Survey",],
                                 },
                                 ["none", "daily"],
                                 [start_time, start_time + MS_IN_DAY])
@@ -351,9 +351,9 @@ def schedule_module_batch(part_id, study_id, module_name, start_time):
         sucess = _schedule_module_helper_batch(part_id, study_id,
                                 {
                                     "Journal Day 1": ["Journal!",
-                                                      "Afternoon Daily Survey"],
+                                                      "Check-in Survey"],
                                     "Journal Day 2-7": ["Journal!",
-                                                        "Afternoon Daily Survey"],
+                                                        "Check-in Survey"],
                                 },
                                 ["none", "daily"],
                                 [start_time, start_time + MS_IN_DAY])
@@ -362,19 +362,19 @@ def schedule_module_batch(part_id, study_id, module_name, start_time):
         sucess = _schedule_module_helper_batch(part_id, study_id,
                                 {
                                     "Distraction Games Day 1": ["Jewels Game",
-                                                                "Afternoon Daily Survey"],
+                                                                "Check-in Survey"],
                                     "Distraction Games Day 2": ["Spatial Span Game",
-                                                                "Afternoon Daily Survey"],
+                                                                "Check-in Survey"],
                                     "Distraction Games Day 3": ["Jewels Game",
-                                                                "Afternoon Daily Survey"],
+                                                                "Check-in Survey"],
                                     "Distraction Games Day 4": ["Spatial Span Game",
-                                                                "Afternoon Daily Survey"],
+                                                                "Check-in Survey"],
                                     "Distraction Games Day 5": ["Jewels Game",
-                                                                "Afternoon Daily Survey"],
+                                                                "Check-in Survey"],
                                     "Distraction Games Day 6": ["Spatial Span Game",
-                                                                "Afternoon Daily Survey"],
+                                                                "Check-in Survey"],
                                     "Distraction Games Day 7": ["Jewels Game",
-                                                                "Afternoon Daily Survey"],
+                                                                "Check-in Survey"],
                                 },
                                 ["none", "none", "none", "none", "none", "none", "none",],
                                 [start_time,
@@ -408,6 +408,7 @@ def _schedule_module_helper_batch(part_id, study_id, act_names, daily_schedule, 
     for k in act_names.keys():
         for x in act_names[k]:
             all_act_names_list.append(x)
+
     if _check_modules(act_dict, all_act_names_list) == 0:
         for j, k in enumerate(act_names.keys()):
             id_list = []
@@ -439,7 +440,6 @@ def _schedule_module_helper_batch(part_id, study_id, act_names, daily_schedule, 
                 except LAMP.exceptions.ApiTypeError:
                     continue
             else:
-                print("YO")
                 try:
                     LAMP.Activity.create(study_id=study_id, activity_activity=batch_dict)
                 except LAMP.exceptions.ApiTypeError:

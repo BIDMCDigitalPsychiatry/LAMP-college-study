@@ -452,7 +452,7 @@ def index(path):
             LAMP.Type.set_attachment(participant_id, 'me', 'lamp.name', request_email)
 
             #Perform initial trial scheduling
-            module_scheduler.schedule_module(participant_id, 'trial_period', start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(15, 0)).timestamp() * 1000))
+            module_scheduler.schedule_module(participant_id, 'trial_period', start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(19, 0)).timestamp() * 1000))
             
             # set enrollment tag
             LAMP.Type.set_attachment(participant_id, 'org.digitalpsych.college_study_2.enrolled', {'status':'trial', 'timestamp':int(time.time()*1000)}) 
@@ -549,8 +549,7 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
     # 1. Dummy activities complete
     # 2. Appropriate sensor data
 
-    #NOTE: CHANGE THI BACK!!!
-    if days_since_start_trial < 0: #if in trial period, don't do anyting
+    if days_since_start_trial < 3: #if in trial period, don't do anyting
         pass
 
     else: # attempt to move into enrollment period
@@ -584,33 +583,34 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
         #support_number_value = [s['value'] if s['text'] == support_number_text for s in event['data'] for event in data if event['activity'] in [ts['id'] for ts in trial_surveys]][0]
         
         safety_plan = [act for act in LAMP.Activity.all_by_participant(participant_id)['data'] if act['name'] == 'Safety Plan'][0]
-        safety_plan_dict_updated = {
-                                    'spec': safety_plan['spec'],
-                                    'name': safety_plan['name'],
-                                    'settings': safety_plan['settings'] +
-                                                [{'title': 'College Mental Health Center',
-                                                 'text': 'Your support number is listed as ' + support_number_value + '.\n Please contact them if you are experiencing feelings of self-harm.'
-                                                 }],
-                                    'schedule':[] 
-                                     }
+        if 'College Mental Health Center' not in [setting['title'] for setting in safety_plan['settings']]:
+            safety_plan_dict_updated = {
+                                        'spec': safety_plan['spec'],
+                                        'name': safety_plan['name'],
+                                        'settings': safety_plan['settings'] +
+                                                    [{'title': 'College Mental Health Center',
+                                                     'text': 'Your support number is listed as ' + support_number_value + '.\n Please contact them if you are experiencing feelings of self-harm.'
+                                                     }],
+                                        'schedule':[] 
+                                         }
 
-        try:
-            LAMP.Activity.update(activity_id=safety_plan['id'], activity_activity=safety_plan_dict_updated)
-        except LAMP.exceptions.ApiTypeError:
-            pass
+            try:
+                LAMP.Activity.update(activity_id=safety_plan['id'], activity_activity=safety_plan_dict_updated)
+            except LAMP.exceptions.ApiTypeError:
+                pass
 
         # If # of trial surveys or GPS sampling frequency does not meet threshold
-        # if len(trial_scores) < len(trial_surveys) or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
+        if len(trial_scores) < len(trial_surveys) or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
 
-        #     #does not meet threshold; do not enroll
-        #     log.info(f"mailto:{SUPPORT_EMAIL}", f"Participant {participant_id} did not meet data quality threshold in the trial period  (days_since_start = {str(days_since_start_trial)}). Please discontinue.")
-        #     push(f"mailto:{SUPPORT_EMAIL}", f"Participant {participant_id} did not meet data quality threshold in the trial period  (days_since_start = {str(days_since_start_trial)}). Please discontinue.")
-        #     return 
+            #does not meet threshold; do not enroll
+            log.info(f"mailto:{SUPPORT_EMAIL}", f"Participant {participant_id} did not meet data quality threshold in the trial period  (days_since_start = {str(days_since_start_trial)}). Please discontinue.")
+            push(f"mailto:{SUPPORT_EMAIL}", f"Participant {participant_id} did not meet data quality threshold in the trial period  (days_since_start = {str(days_since_start_trial)}). Please discontinue.")
+            return 
 
 
         # change to enroll by scheduling morning daily/weekly survey running enrolled worker
-        module_scheduler.schedule_module(participant_id, 'Morning Daily Survey', start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(10, 0)).timestamp() * 1000))
-        module_scheduler.schedule_module(participant_id, 'Weekly Survey', start_time=int(datetime.datetime.combine((datetime.datetime.now() + datetime.timedelta(days=7)).date(), datetime.time(10, 0)).timestamp() * 1000))
+        module_scheduler.schedule_module(participant_id, 'Morning Daily Survey', start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(14, 0)).timestamp() * 1000))
+        module_scheduler.schedule_module(participant_id, 'Weekly Survey', start_time=int(datetime.datetime.combine((datetime.datetime.now() + datetime.timedelta(days=7)).date(), datetime.time(13, 30)).timestamp() * 1000))
         LAMP.Type.set_attachment(participant_id, 'me', 'org.digitalpsych.college_study_2.enrolled', {'status':'enrolled', 'timestamp':int(time.time()*1000)})
         enrollment_worker(participant_id, study_id, days_since_start_enrollment=0)
 
@@ -735,18 +735,17 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
                                        bin_size=1000 * 60)['data'])
 
     activity_events_past_5_days = LAMP.ActivityEvent.all_by_participant(participant_id, _from=int(time.time()*1000) - (MS_IN_A_DAY * 5))['data']
-    #IMPORRTANT: add back in gps requirement
-    # if len(activity_events_past_5_days) == 0 or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
-    #     return
+    if len(activity_events_past_5_days) == 0 or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
+        push(f"mailto:{SUPPORT_EMAIL}", f"Participant {participant_id} did not meet data quality threshold in the enrollment period  (days_since_start = {str(days_since_start_enrollment)}). Please discontinue.")
+        log.info(f"Participant {participant_id} did not meet data quality threshold in the enrollment period  (days_since_start = {str(days_since_start_enrollment)}). Please discontinue.")
+        return
 
     #Change schedule for intervention
     week_index = math.floor(days_since_start_enrollment / 7)
-    print(week_index)
     if week_index <= len(ACTIVITY_SCHEDULE) - 1: #schedule new module if not already scheduled
         module_to_schedule = ACTIVITY_SCHEDULE[week_index]
-        print(module_to_schedule)
-        module_scheduler.schedule_module_batch(participant_id, study_id, module_to_schedule, start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(15, 0)).timestamp() * 1000))
-        module_scheduler.unschedule_other_surveys(participant_id, keep_these=['Morning Daily Survey', 'Weekly Survey' ,module_to_schedule] + ACTIVITY_SCHEDULE_MAP[module_to_schedule])
+        module_scheduler.schedule_module_batch(participant_id, study_id, module_to_schedule, start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(19, 0)).timestamp() * 1000))
+        module_scheduler.unschedule_other_surveys(participant_id, keep_these=['Morning Daily Survey', 'Weekly Survey', module_to_schedule] + ACTIVITY_SCHEDULE_MAP[module_to_schedule])
     else:
         module_scheduler.unschedule_other_surveys(participant_id, keep_these=[])
 
@@ -769,9 +768,6 @@ def automations_worker():
         # Iterate across all RECENT (only the previous day) patient data.
         all_participants = LAMP.Participant.all_by_study(study['id'])['data']
         for participant in all_participants:
-            #NOTE: CHANGE THI BACK!!!
-            if participant['id'] != "U5240624077":
-                continue
 
             log.info(f"Processing Participant \"{participant['id']}\".")
             data = LAMP.ActivityEvent.all_by_participant(participant['id'])['data']
