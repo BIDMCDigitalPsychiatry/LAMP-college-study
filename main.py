@@ -455,7 +455,7 @@ def index(path):
             module_scheduler.schedule_module(participant_id, 'trial_period', start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(19, 0)).timestamp() * 1000))
             
             # set enrollment tag
-            LAMP.Type.set_attachment(participant_id, 'org.digitalpsych.college_study_2.enrolled', {'status':'trial', 'timestamp':int(time.time()*1000)}) 
+            LAMP.Type.set_attachment(participant_id, 'me', 'org.digitalpsych.college_study_2.enrolled', {'status':'trial', 'timestamp':int(time.time()*1000)}) 
             
             #Create credential
             LAMP.Credential.create(participant_id, {'origin': participant_id, 'access_key': request_email, 'secret_key': participant_id, 'description': "Generated Login"})
@@ -549,7 +549,7 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
     # 1. Dummy activities complete
     # 2. Appropriate sensor data
 
-    if days_since_start_trial < 3: #if in trial period, don't do anyting
+    if days_since_start_trial < 0: #if in trial period, don't do anyting
         pass
 
     else: # attempt to move into enrollment period
@@ -680,6 +680,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
         # Confirm the payout amount if appropriate or bail.
         payout_amount = None
         if len(delivered_gift_codes) == 0 and len(weekly_scores) >= 1 and days_since_start_enrollment >= 7:
+            #weekly_scores_weeks_1 = [s for s in weekly_scores if int(time.time()*1000) - (1000 * 60 * 60 * 24 * days_since_start_enrollment) <= s[0] <= int(time.time()*1000) - (1000 * 60 * 60 * 24 * days_since_start_enrollment)]
             payout_amount = "$15"
         elif len(delivered_gift_codes) == 1 and len(weekly_scores) >= 2 and days_since_start_enrollment >= 21:
             payout_amount = "$15"
