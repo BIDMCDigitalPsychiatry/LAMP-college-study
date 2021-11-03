@@ -573,6 +573,7 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
                                                bin_size=1000 * 60)['data'])
 
         # set support phone as tip
+        support_number_value = None
         support_number_text = "What is the phone number of your college mental health center?"
         for event in data:
             if event['activity'] in [ts['id'] for ts in trial_surveys]:
@@ -583,7 +584,7 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
         #support_number_value = [s['value'] if s['text'] == support_number_text for s in event['data'] for event in data if event['activity'] in [ts['id'] for ts in trial_surveys]][0]
         
         safety_plan = [act for act in LAMP.Activity.all_by_participant(participant_id)['data'] if act['name'] == 'Safety Plan'][0]
-        if 'College Mental Health Center' not in [setting['title'] for setting in safety_plan['settings']]:
+        if 'College Mental Health Center' not in [setting['title'] for setting in safety_plan['settings']] and support_number_value != None:
             safety_plan_dict_updated = {
                                         'spec': safety_plan['spec'],
                                         'name': safety_plan['name'],
