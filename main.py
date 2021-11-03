@@ -604,8 +604,8 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
         if len(trial_scores) < len(trial_surveys) or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
 
             #does not meet threshold; do not enroll
-            log.info(f"mailto:{SUPPORT_EMAIL}", f"Participant {participant_id} did not meet data quality threshold in the trial period  (days_since_start = {str(days_since_start_trial)}). Please discontinue.")
-            push(f"mailto:{SUPPORT_EMAIL}", f"Participant {participant_id} did not meet data quality threshold in the trial period  (days_since_start = {str(days_since_start_trial)}). Please discontinue.")
+            log.info(f"mailto:{SUPPORT_EMAIL}", f"Participant {participant_id} did not meet data quality threshold in the trial period  (days_since_start = {str(days_since_start_trial)}). \n Please discontinue.")
+            push(f"mailto:{SUPPORT_EMAIL}", f"Participant {participant_id} did not meet data quality threshold in the trial period  (days_since_start = {str(days_since_start_trial)}). \n Please discontinue.")
             return 
 
 
