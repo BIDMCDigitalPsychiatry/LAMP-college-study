@@ -734,8 +734,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
 
     activity_events_past_5_days = LAMP.ActivityEvent.all_by_participant(participant_id, _from=int(time.time()*1000) - (MS_IN_A_DAY * 5))['data']
     if len(activity_events_past_5_days) == 0 or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
-        push(f"mailto:{SUPPORT_EMAIL}", f"Poor data quality \n Participant {participant_id} did not meet data quality threshold in the enrollment period  (days_since_start = {str(days_since_start_enrollment)}). Please discontinue.")
-        log.info(f"Participant {participant_id} did not meet data quality threshold in the enrollment period  (days_since_start = {str(days_since_start_enrollment)}). Please discontinue.")
+        push(f"mailto:{SUPPORT_EMAIL}", f"Poor data quality \n Participant {participant_id} did not meet data quality threshold in the enrollment period  (days_since_start = {days_since_start_enrollment}). Please discontinue.")
         return
 
     #Change schedule for intervention
