@@ -162,7 +162,7 @@ ACTIVITY_SCHEDULE_MAP = {
 }
 TRIAL_SURVEY_SCHEDULE = ['Trial Period Day 1', 'Trial Period Day 2', 'Trial Period Day 3']
 ENROLLMENT_SURVEY_SCHEDULE = ['Morning Daily Survey', 'Afternoon Daily Survey']
-GPS_SAMPLING_THRESHOLD = 0.2
+GPS_SAMPLING_THRESHOLD = 0.0 #CHANGE BACK
 
 # Helper class to create a repeating timer thread that executes a worker function.
 class RepeatTimer(Timer):
@@ -546,6 +546,7 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
     # 1. Dummy activities complete
     # 2. Appropriate sensor data
 
+    #CHANGE BACK
     if days_since_start_trial < 0: #if in trial period, don't do anyting
         pass
 
@@ -807,5 +808,6 @@ def automations_worker():
 
 # Driver code to accept HTTP requests and run the automations worker on repeat.
 if __name__ == '__main__':
-    RepeatTimer(3 * 60 * 60, automations_worker).start() # loop: every3h
+    #CHANGE LOOP BACK TO 3 HOURS
+    RepeatTimer(5*60, automations_worker).start() # loop: every3h
     app.run(host='0.0.0.0', port=3000, debug=False)
