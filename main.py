@@ -457,16 +457,13 @@ def index(path):
             # set enrollment tag
             LAMP.Type.set_attachment(participant_id, 'me', 'org.digitalpsych.college_study_2.enrolled', {'status':'trial', 'timestamp':int(time.time()*1000)}) 
             
-            #Create credential
-            LAMP.Credential.create(participant_id, {'origin': participant_id, 'access_key': request_email, 'secret_key': participant_id, 'description': "Generated Login"})
-
             log.info(f"Configured Participant ID {participant_id} with a generated login credential using {request_email}.")
 
         except:
             log.exception("API ERROR")
 
         # Notify the requester's email address of this information and mark them in the registered_users Tag.
-        push(f"mailto:{request_email}", f"Welcome to mindLAMP.\nThank you for completing the enrollment survey and informed consent process. We have generated an account for you to download the mindLAMP app and get started.\nThis is your password: {participant_id}.\nPlease follow this link to download and login to the app: https://www.digitalpsych.org/college-covid You will need the password given to you in this email.\n")
+        push(f"mailto:{request_email}", f"Welcome to mindLAMP.\nThank you for completing the enrollment survey and informed consent process. We have generated an account for you to download the mindLAMP app and get started.\n This is your username: {participant_id + '@lamp.com'} password: {participant_id}.\nPlease follow this link to download and login to the app: https://www.digitalpsych.org/college-covid You will need the password given to you in this email.\n")
         LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_2.registered_users', registered_users + [request_email])
         log.info(f"Completed registration process for {request_email}.")
         return html(f"<p>Further instructions have been emailed to {request_email}.</p>")
