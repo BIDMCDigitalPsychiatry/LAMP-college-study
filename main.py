@@ -499,7 +499,6 @@ def index(path):
             # Send the generic notification.
             push(device, f"You have a new coaching message in mindLAMP.")
             log.info(f"Completed notification process for {request_id}.")
-            #slack(f"Sent coaching notification to {request_id} upon administrator request.")
             return html(f"<p>Processed request for Participant ID {request_id}.</p>")
         except:
             log.info(f"Sending notification failed for {request_id}.")
@@ -642,8 +641,9 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
     weekly_scores_3_hrs = [s for s in weekly_scores if s[0] >= int(time.time()*1000) - (1000 * 60 * 60 * 3)]
     for _, score in weekly_scores_3_hrs:
         if score == 'Nearly every day':
-            log.info(f"Participant {participant_id} reported PHQ9 Q9 value of {weekly_scores[-1][1]}.")
-                
+            slack(f"[PHQ-9 WARNING] Participant {participant_id} reported 'Nearly every day' on Q9 of the PHQ-9 <@UBJLNQMAS>")
+            push(f"mailto:{SUPPORT_EMAIL}", f"[URGENT] Participant {participant_id} reported an 3 on question 9 of PHQ-9.\nPlease get in touch with this participant's support contact.")
+
             # Determine the Participant's device push token or bail if none is configured.
             analytics = LAMP.SensorEvent.all_by_participant(participant_id, origin="lamp.analytics")['data']
             #print(analytics)
@@ -657,7 +657,10 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
                 # Record success/failure to send push notification.
                 push(f"mailto:{SUPPORT_EMAIL}", f"[URGENT] Participant {participant_id} reported an 3 on question 9 of PHQ-9.\nPlease get in touch with this participant's support contact.")
                 log.info(f"Sent PHQ-9 notice to Participant {participant_id} via push notification.")
-                #slack(f"Participant {participant_id} reported PHQ9 Q9 value of {weekly_scores[-1][1]}; sent push notification notice.")
+
+            else:
+                slack(f"[PHQ-9 WARNING] [URGENT] a push notification was not able to be sent in regards to the elevated PHQ-9. Please reach out to this user ASAP <@UBJLNQMAS>")
+
             break
 
     if len(weekly_scores) >= 1:
@@ -689,7 +692,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
         # Begin the process of vending the payout amount. Also used to track whether we have sent a PHQ-9 notice.
         if payout_amount is not None:
             log.info(f"Participant {participant_id} was approved for a payout of amount {payout_amount}.")
-            #slack(f"Participant {participant_id} was approved for a payout of amount {payout_amount}.")
+            slack(f"Participant {participant_id} was approved for a payout of amount {payout_amount}.")
             
             # Retreive an available gift card code from the study registry and deliver the email. 
             # NOTE: Not wrapped in try-catch because this Tag MUST exist prior to running this script.
@@ -699,7 +702,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
                 participant_code = gift_codes[payout_amount].pop()
                 push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing your weekly activities! Here's your Amazon Gift Card Code: [{participant_code}]. Please ensure you fill out a payment form ASAP: https://www.digitalpsych.org/college-payment-forms")
                 log.info(f"Delivered gift card code {participant_code} to the Participant {participant_id} via email.")
-                #slack(f"Delivered gift card code {participant_code} to the Participant {participant_id} via email at {email_address}.")
+                slack(f"Delivered gift card code {participant_code} to the Participant {participant_id} via email at {email_address}.")
 
                 # Mark the gift card code as claimed by a participant and remove it from the study registry.
                 if DEBUG_MODE:
@@ -721,6 +724,10 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
                 #slack(f"Delivered EXIT SURVEY and gift card code to the Participant {participant_id} via email at {email_address}.")
     else:
         log.info(f"No gift card codes to deliver to Participant {participant_id}.")
+
+    #Exit worker
+    if days_since_start_enrollment >= 0.01:
+        exit_worker(part_id, study_id, days_since_start_enrollment)
 
     act_dict = all_activities 
 
@@ -745,6 +752,18 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
         module_scheduler.unschedule_other_surveys(participant_id, keep_these=['Morning Daily Survey', 'Weekly Survey', module_to_schedule] + ACTIVITY_SCHEDULE_MAP[module_to_schedule])
     else:
         module_scheduler.unschedule_other_surveys(participant_id, keep_these=[])
+
+
+#Stop a participant's scheduled activities and sensor collection
+def exit_worker(part_id, study_id, days_since_start_enrollment):
+    module_scheduler.unschedule_other_surveys(participant_id, keep_these=[])
+    #TODO Kill sensor collection
+    #LAMP.Sensor.update(part, 'lamp.none')
+    enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled')['data']#['status']
+    enrolled_status, enrolled_timestamp = enrolled['status'], enrolled['timestamp']
+
+    if enrolled_status != 'completed':
+        LAMP.Type.set_attachment(participant_id, 'me', 'org.digitalpsych.college_study_2.enrolled', {'status':'completed', 'timestamp':int(time.time()*1000)})
 
 
 # The Automations worker listens to changes in the study's patient data and triggers interventions.
@@ -775,6 +794,8 @@ def automations_worker():
             try:
                 enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled')['data']#['status']
                 enrolled_status, enrolled_timestamp = enrolled['status'], enrolled['timestamp']
+                if enrolled_status == 'completed':
+                    continue
                 if enrolled_status != 'trial' and enrolled_status != 'enrolled':
                     log.info(f"Participant \"{participant['id']}\" has an invalid enrollment tag. Please see.")
                     continue
