@@ -128,7 +128,7 @@ VEGA_SPEC_JOURNAL = {
 
 # [REQUIRED] Environment Variables
 # TODO: Remove all remaining hard-coded text/links.
-DEBUG_MODE = True if os.getenv("DEBUG_MODE") == "on" else False
+# DEBUG_MODE = True if os.getenv("DEBUG_MODE") == "on" else False
 APP_NAME = os.getenv("APP_NAME")
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
 PUBLIC_URL = os.getenv("PUBLIC_URL")
@@ -141,11 +141,14 @@ RESEARCHER_ID = os.getenv("RESEARCHER_ID")
 COPY_STUDY_ID = os.getenv("COPY_STUDY_ID")
 REDCAP_REQUEST_CODE = os.getenv("REDCAP_REQUEST_CODE")
 ADMIN_REQUEST_CODE = os.getenv("ADMIN_REQUEST_CODE")
-
 TRIAL_DAYS = os.getenv("TRIAL_DAYS")
 ENROLLMENT_DAYS = os.getenv("ENROLLMENT_DAYS")
 GPS_SAMPLING_THRESHOLD = os.getenv("GPS_SAMPLING_THRESHOLD")
-
+PAYMENT_1_DAYS = os.getenv("PAYMENT_1_DAYS")
+PAYMENT_2_DAYS = os.getenv("PAYMENT_2_DAYS")
+PAYMENT_3_DAYS = os.getenv("PAYMENT_3_DAYS")
+PAYMENT_LENCIENCY_DAYS = os.getenv("PAYMENT_LENCIENCY_DAYS")
+REDCAP_EXIT_SURVEY_LINK = os.getenv("REDCAP_EXIT_SURVEY_LINK")
 # TODO: Convert to service account and "me" ID. Move all configuration into a Tag on "me".
 
 # Create an HTTP app and connect to the LAMP Platform.
@@ -603,7 +606,7 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
         if len(trial_scores) < len(trial_surveys) or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
 
             #does not meet threshold; do not enroll
-            push(f"mailto:{SUPPORT_EMAIL}", f"Data Quality Threshold: Participant {participant_id} \n This participant did not meet data quality threshold in the trial period  (days_since_start = {days_since_start_trial}). Please discontinue.")
+            slack(f"[Data Quality Threshold] {participant_id} \n This participant did not meet data quality threshold in the trial period  (days_since_start_trial = {days_since_start_trial}). Please discontinue.")
             return 
 
 
@@ -619,6 +622,10 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
     # Send a gift card if AT LEAST one "Weekly Survey" was completed today AND they did not already claim one.
     # Weekly scores are a filtered list of events in the format: (timestamp, sum(temporal_slices.value)) (DESC order.)
     # NOTE: For this survey only question #9 (PHQ-9 suicide, slice 8:9) is considered as part of the score.
+
+    #Get enrollment status, timestamp
+    enrolled = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_2.enrolled')['data']#['status']
+    enrolled_status, enrolled_timestamp = enrolled['status'], enrolled['timestamp']
 
     # If entering into enrollment, schedule weekly, daily survey consistently
     data = LAMP.ActivityEvent.all_by_participant(participant_id)['data']
@@ -682,12 +689,11 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
 
         # Confirm the payout amount if appropriate or bail.
         payout_amount = None
-        if len(delivered_gift_codes) == 0 and len(weekly_scores) >= 1 and days_since_start_enrollment >= 7:
-            #weekly_scores_weeks_1 = [s for s in weekly_scores if int(time.time()*1000) - (1000 * 60 * 60 * 24 * days_since_start_enrollment) <= s[0] <= int(time.time()*1000) - (1000 * 60 * 60 * 24 * days_since_start_enrollment)]
+        if len(delivered_gift_codes) == 0 and len([event for event in weekly_scores if enrolled_timestamp <= event[0] <= enrolled_timestamp + ((PAYMENT_1_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_1_DAYS:
             payout_amount = "$15"
-        elif len(delivered_gift_codes) == 1 and len(weekly_scores) >= 2 and days_since_start_enrollment >= 21:
+        elif len(delivered_gift_codes) == 1 and len([event for event in weekly_scores if enrolled_timestamp + ((PAYMENT_1_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY) <= event[0] <= enrolled_timestamp + ((PAYMENT_2_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_2_DAYS:
             payout_amount = "$15"
-        elif len(delivered_gift_codes) == 2 and len(weekly_scores) >= 2 and days_since_start_enrollment >= 28:
+        elif len(delivered_gift_codes) == 2 and len([event for event in weekly_scores if enrolled_timestamp + ((PAYMENT_2_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY) <= event[0] <= enrolled_timestamp + ((PAYMENT_3_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_3_DAYS:
             payout_amount = "$20"
         else:
             log.info(f"No gift card codes to deliver to Participant {participant_id} -- already delivered {len(delivered_gift_codes)}.")
@@ -717,11 +723,11 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
             else:
                 # We have no more gift card codes left - send an alert instead.
                 push(f"mailto:{SUPPORT_EMAIL}", f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
-                #slack(f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
+                slack(f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
 
             # Additional offboarding/exit survey procedures and update the "lamp.name" to add a FINISHED indicator.
             if payout_amount == "$s20":
-                push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing the study. Please complete the exit survey: https://redcap.bidmc.harvard.edu/redcap/surveys/?s=PNJ94E8DX4 -- You no longer need to fill out surveys and you can delete the app at any time now! Thank you!")
+                push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing the study. Please complete the exit survey: {REDCAP_EXIT_SURVEY_LINK} -- You no longer need to fill out surveys and you can delete the app at any time now! Thank you!")
                 if not DEBUG_MODE:
                     LAMP.Type.set_attachment(participant_id, 'me', 'lamp.name', f"✅ {email_address}")
                 #slack(f"Delivered EXIT SURVEY and gift card code to the Participant {participant_id} via email at {email_address}.")
@@ -730,7 +736,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
 
     #Exit worker
     if days_since_start_enrollment >= ENROLLMENT_DAYS:
-        exit_worker(part_id, study_id, days_since_start_enrollment)
+        exit_worker(participant_id, study_id, days_since_start_enrollment)
 
     act_dict = all_activities 
 
@@ -744,7 +750,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
 
     activity_events_past_5_days = LAMP.ActivityEvent.all_by_participant(participant_id, _from=int(time.time()*1000) - (MS_IN_A_DAY * 5))['data']
     if len(activity_events_past_5_days) == 0 or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
-        push(f"mailto:{SUPPORT_EMAIL}", f"Poor data quality \n Participant {participant_id} did not meet data quality threshold in the enrollment period  (days_since_start = {days_since_start_enrollment}). Please discontinue.")
+        slack(f"[Data Qualtiy Threshold] {participant_id} \n This participant did not meet data quality threshold in the enrollment period  (days_since_start_enrollment = {days_since_start_enrollment}). Please discontinue.")
         return
 
     #Change schedule for intervention
@@ -758,11 +764,11 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
 
 
 #Stop a participant's scheduled activities and sensor collection
-def exit_worker(part_id, study_id, days_since_start_enrollment):
+def exit_worker(participant_id, study_id, days_since_start_enrollment):
     module_scheduler.unschedule_other_surveys(participant_id, keep_these=[])
     #TODO Kill sensor collection
     #LAMP.Sensor.update(part, 'lamp.none')
-    enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled')['data']#['status']
+    enrolled = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_2.enrolled')['data']#['status']
     enrolled_status, enrolled_timestamp = enrolled['status'], enrolled['timestamp']
 
     if enrolled_status != 'completed':
