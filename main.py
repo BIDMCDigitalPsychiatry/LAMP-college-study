@@ -142,6 +142,10 @@ COPY_STUDY_ID = os.getenv("COPY_STUDY_ID")
 REDCAP_REQUEST_CODE = os.getenv("REDCAP_REQUEST_CODE")
 ADMIN_REQUEST_CODE = os.getenv("ADMIN_REQUEST_CODE")
 
+TRIAL_DAYS = os.getenv("TRIAL_DAYS")
+ENROLLMENT_DAYS = os.getenv("ENROLLMENT_DAYS")
+GPS_SAMPLING_THRESHOLD = os.getenv("GPS_SAMPLING_THRESHOLD")
+
 # TODO: Convert to service account and "me" ID. Move all configuration into a Tag on "me".
 
 # Create an HTTP app and connect to the LAMP Platform.
@@ -162,7 +166,6 @@ ACTIVITY_SCHEDULE_MAP = {
 }
 TRIAL_SURVEY_SCHEDULE = ['Trial Period Day 1', 'Trial Period Day 2', 'Trial Period Day 3']
 ENROLLMENT_SURVEY_SCHEDULE = ['Morning Daily Survey', 'Afternoon Daily Survey']
-GPS_SAMPLING_THRESHOLD = 0.2 
 
 # Helper class to create a repeating timer thread that executes a worker function.
 class RepeatTimer(Timer):
@@ -545,7 +548,7 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
     # 1. Dummy activities complete
     # 2. Appropriate sensor data
 
-    if days_since_start_trial < 3: #if in trial period, don't do anyting
+    if days_since_start_trial < TRIAL_DAYS: #if in trial period, don't do anyting
         pass
 
     else: # attempt to move into enrollment period
@@ -726,7 +729,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
         log.info(f"No gift card codes to deliver to Participant {participant_id}.")
 
     #Exit worker
-    if days_since_start_enrollment >= 0.01:
+    if days_since_start_enrollment >= ENROLLMENT_DAYS:
         exit_worker(part_id, study_id, days_since_start_enrollment)
 
     act_dict = all_activities 
