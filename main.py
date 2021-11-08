@@ -129,6 +129,7 @@ VEGA_SPEC_JOURNAL = {
 # [REQUIRED] Environment Variables
 # TODO: Remove all remaining hard-coded text/links.
 APP_NAME = os.getenv("APP_NAME")
+APP_REPEAT_SCHEDULE = os.getenv("APP_REPEAT_SCHEDULE")
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
 DEBUG_MODE = True if os.getenv("DEBUG_MODE") == "on" else False
 PUBLIC_URL = os.getenv("PUBLIC_URL")
@@ -880,5 +881,5 @@ def automations_worker():
 
 # Driver code to accept HTTP requests and run the automations worker on repeat.
 if __name__ == '__main__':
-    RepeatTimer(24*60*60, automations_worker).start() # loop: every3h
+    RepeatTimer(APP_REPEAT_SCHEDULE, automations_worker).start() # loop: every3h
     app.run(host='0.0.0.0', port=3000, debug=False)
