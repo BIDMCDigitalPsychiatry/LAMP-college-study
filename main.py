@@ -617,8 +617,8 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
 
 
         # change to enroll by scheduling morning daily/weekly survey running enrolled worker
-        module_scheduler.schedule_module(participant_id, 'Morning Daily Survey', start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(14, 0)).timestamp() * 1000))
-        module_scheduler.schedule_module(participant_id, 'Weekly Survey', start_time=int(datetime.datetime.combine((datetime.datetime.now() + datetime.timedelta(days=7)).date(), datetime.time(13, 30)).timestamp() * 1000))
+        module_scheduler.schedule_module(participant_id, 'Morning Daily Survey', start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(16, 0)).timestamp() * 1000))
+        module_scheduler.schedule_module(participant_id, 'Weekly Survey', start_time=int(datetime.datetime.combine((datetime.datetime.now() + datetime.timedelta(days=7)).date(), datetime.time(23, 30)).timestamp() * 1000))
         LAMP.Type.set_attachment(participant_id, 'me', 'org.digitalpsych.college_study_2.enrolled', {'status':'enrolled', 'timestamp':int(time.time()*1000)})
         enrollment_worker(participant_id, study_id, days_since_start_enrollment=0)
 
@@ -671,7 +671,6 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
                 push(device, f"Thank you for completing your weekly survey. Because your responses are not monitored in real time, we would like to remind you of some other resources that you can access if you are considering self-harm.\n Please see your 'Safety Plan' activity in which you have entered a support line availablethrough your university. The national suicide prevention line is a 24/7 toll-free service that can be accessed by dialing 1-800-273-8255.")
                 
                 # Record success/failure to send push notification.
-                push(f"mailto:{SUPPORT_EMAIL}", f"[URGENT] Participant {participant_id} reported an 3 on question 9 of PHQ-9.\nPlease get in touch with this participant's support contact.")
                 log.info(f"Sent PHQ-9 notice to Participant {participant_id} via push notification.")
 
             else:
@@ -797,7 +796,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
 def exit_worker(participant_id, study_id, days_since_start_enrollment):
     module_scheduler.unschedule_other_surveys(participant_id, keep_these=[])
     #TODO Kill sensor collection
-    #LAMP.Sensor.update(part, 'lamp.none')
+    LAMP.SensorSpec.update(part, 'lamp.none')
     enrolled = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_2.enrolled')['data']#['status']
     enrolled_status, enrolled_timestamp = enrolled['status'], enrolled['timestamp']
 
@@ -824,19 +823,24 @@ def automations_worker():
         all_participants = LAMP.Participant.all_by_study(study['id'])['data']
         for participant in all_participants:
 
+            request_email = LAMP.Type.get_attachment(participant['id'], 'lamp.name')['data']
             #Check if participant is valid via redcap activities
             try:
+                enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled')['data']
                 redcap_status = LAMP.Type.get_attachment(participant['id'], REDCAP_ID_ATTACH)['data']
-                if redcap_status <= 0: #then discontinue and unenroll
+                if int(redcap_status) <= 0 and int(time.time() * 1000) - enrolled['timestamp'] >= 1 * 60 * 1000: #then discontinue and unenroll
                     slack(f"[REDCAP FAILURE] Participant {participant['id']} did not complete Redcap enrollment activities. Removing...")
+                    push(f"mailto:{request_email}", f"LAMP Study Status \n Due to the absence of required enrollment documents on Redcap, your account is being removed from the study. Please contact support staff if you have any questions.")
                     try: 
                         LAMP.Participant.delete(participant['id']) 
                         continue
                     except: 
                         continue
                     
-            except:
-                slack(f"[REDCAP FAILURE] Participant {participant['id']} does not have a redcap status attachment. Please see")
+            except Exception as e:
+                print(e)
+                slack(f"[REDCAP FAILURE] Participant {participant['id']} does not have a redcap status attachment or enrolled tag. Please see")
+
 
 
             log.info(f"Processing Participant \"{participant['id']}\".")
@@ -846,7 +850,7 @@ def automations_worker():
 
             #Check to see if enrolled tag exists
             try:
-                enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled')['data']#['status']
+                enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled')['data']
                 enrolled_status, enrolled_timestamp = enrolled['status'], enrolled['timestamp']
                 if enrolled_status == 'completed':
                     continue
@@ -854,7 +858,7 @@ def automations_worker():
                     log.info(f"Participant \"{participant['id']}\" has an invalid enrollment tag. Please see.")
                     continue
 
-            except:
+            except LAMP.exceptions.ApiException:
                 if days_since_start > 3:
                     log.info(f"WARNING: Participant \"{participant['id']}\" has been participating past the trial period, yet does not have an enrolled tag.")
                 #Make enrolled tag 
