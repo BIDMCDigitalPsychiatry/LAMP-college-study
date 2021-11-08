@@ -829,11 +829,16 @@ def automations_worker():
                 redcap_status = LAMP.Type.get_attachment(participant['id'], REDCAP_ID_ATTACH)['data']
                 if redcap_status <= 0: #then discontinue and unenroll
                     slack(f"[REDCAP FAILURE] Participant {participant['id']} did not complete Redcap enrollment activities. Removing...")
-                    LAMP.Participant.delete(participant_id)
+                    try: 
+                        LAMP.Participant.delete(participant['id']) 
+                    except: 
+                        pass
                     continue
             except:
                 slack(f"[REDCAP FAILURE] Participant {participant['id']} does not have a redcap status attachment. Removing...")
-                LAMP.Participant.delete(participant_id)
+                try: 
+                    LAMP.Participant.delete(participant['id']) 
+                except: pass
                 continue
 
 
