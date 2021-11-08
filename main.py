@@ -128,9 +128,9 @@ VEGA_SPEC_JOURNAL = {
 
 # [REQUIRED] Environment Variables
 # TODO: Remove all remaining hard-coded text/links.
-# DEBUG_MODE = True if os.getenv("DEBUG_MODE") == "on" else False
 APP_NAME = os.getenv("APP_NAME")
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
+DEBUG_MODE = True if os.getenv("DEBUG_MODE") == "on" else False
 PUBLIC_URL = os.getenv("PUBLIC_URL")
 PUSH_API_KEY = os.getenv("PUSH_API_KEY")
 PUSH_GATEWAY = os.getenv("PUSH_GATEWAY")
@@ -149,6 +149,9 @@ PAYMENT_2_DAYS = os.getenv("PAYMENT_2_DAYS")
 PAYMENT_3_DAYS = os.getenv("PAYMENT_3_DAYS")
 PAYMENT_LENCIENCY_DAYS = os.getenv("PAYMENT_LENCIENCY_DAYS")
 REDCAP_EXIT_SURVEY_LINK = os.getenv("REDCAP_EXIT_SURVEY_LINK")
+REDCAP_ID_ATTACH = os.getenv("REDCAP_ID_ATTACH") 'org.digitalpsych.college_study_2.redcap_id'
+REDCAP_SURVEY_ATTACH = os.getenv("REDCAP_SURVEY_ATTACH")
+
 # TODO: Convert to service account and "me" ID. Move all configuration into a Tag on "me".
 
 # Create an HTTP app and connect to the LAMP Platform.
@@ -446,6 +449,8 @@ def index(path):
         # Select a random Study and create a new Participant and assign name and Credential.
         try:
 
+
+
             url = f'https://api.lamp.digital/researcher/{RESEARCHER_ID}/study/clone'
             headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8','authorization':f"{os.getenv('LAMP_ACCESS_KEY')}:{os.getenv('LAMP_SECRET_KEY')}"}
             payload = json.dumps({'study_id': COPY_STUDY_ID, 'should_add_participant': 'true', 'name': request_email})
@@ -688,49 +693,73 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
             pass # 404 error if the Tag has never been created before.
 
         # Confirm the payout amount if appropriate or bail.
-        payout_amount = None
-        if len(delivered_gift_codes) == 0 and len([event for event in weekly_scores if enrolled_timestamp <= event[0] <= enrolled_timestamp + ((PAYMENT_1_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_1_DAYS:
-            payout_amount = "$15"
-        elif len(delivered_gift_codes) == 1 and len([event for event in weekly_scores if enrolled_timestamp + ((PAYMENT_1_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY) <= event[0] <= enrolled_timestamp + ((PAYMENT_2_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_2_DAYS:
-            payout_amount = "$15"
-        elif len(delivered_gift_codes) == 2 and len([event for event in weekly_scores if enrolled_timestamp + ((PAYMENT_2_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY) <= event[0] <= enrolled_timestamp + ((PAYMENT_3_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_3_DAYS:
-            payout_amount = "$20"
-        else:
-            log.info(f"No gift card codes to deliver to Participant {participant_id} -- already delivered {len(delivered_gift_codes)}.")
+        # Get previous payment authorizations
+        try:
+            payment_auth = LAMP.Type.get_attachment(participant_id, REDCAP_SURVEY_ATTACH)['data']
+        except: 
+            slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} does not have payment auth attachment. Please figure out...")
+            payment_auth = None
 
-        # Begin the process of vending the payout amount. Also used to track whether we have sent a PHQ-9 notice.
-        if payout_amount is not None:
-            log.info(f"Participant {participant_id} was approved for a payout of amount {payout_amount}.")
-            slack(f"Participant {participant_id} was approved for a payout of amount {payout_amount}.")
-            
-            # Retreive an available gift card code from the study registry and deliver the email. 
-            # NOTE: Not wrapped in try-catch because this Tag MUST exist prior to running this script.
-            gift_codes = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.college_study_2.gift_codes')['data']
-            if len(gift_codes[payout_amount]) > 0:
-                # We have a gift card code allocated to send to this participant.
-                participant_code = gift_codes[payout_amount].pop()
-                push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing your weekly activities! Here's your Amazon Gift Card Code: [{participant_code}]. Please ensure you fill out a payment form ASAP: https://www.digitalpsych.org/college-payment-forms")
-                log.info(f"Delivered gift card code {participant_code} to the Participant {participant_id} via email.")
-                slack(f"Delivered gift card code {participant_code} to the Participant {participant_id} via email at {email_address}.")
+        if payment_auth != None:
+            payout_amount = None
+            if len(delivered_gift_codes) == 0 and len([event for event in weekly_scores if enrolled_timestamp <= event[0] <= enrolled_timestamp + ((PAYMENT_1_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_1_DAYS:
+                payout_amount = "$15"
+                payment_auth_link = payment_auth['payment_authorization_1']['link']
 
-                # Mark the gift card code as claimed by a participant and remove it from the study registry.
-                if DEBUG_MODE:
-                    log.debug(pformat(delivered_gift_codes + [participant_code]))
+            elif len(delivered_gift_codes) == 1 and len([event for event in weekly_scores if enrolled_timestamp + ((PAYMENT_1_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY) <= event[0] <= enrolled_timestamp + ((PAYMENT_2_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_2_DAYS:
+                if payment_auth['payment_authorization_1']['done'] == 0:
+                    slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} did not complete required payment authorization 1. Witholding payment 2")
                 else:
-                    LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_2.gift_codes', gift_codes)
-                    LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_2.delivered_gift_codes', delivered_gift_codes + [participant_code])
-                log.info(f"Marked gift card code {participant_code} as claimed by Participant {participant_id}.")
-            else:
-                # We have no more gift card codes left - send an alert instead.
-                push(f"mailto:{SUPPORT_EMAIL}", f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
-                slack(f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
+                    payout_amount = "$15"
+                    payment_auth_link = payment_auth['payment_authorization_2']['link']
 
-            # Additional offboarding/exit survey procedures and update the "lamp.name" to add a FINISHED indicator.
-            if payout_amount == "$s20":
-                push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing the study. Please complete the exit survey: {REDCAP_EXIT_SURVEY_LINK} -- You no longer need to fill out surveys and you can delete the app at any time now! Thank you!")
-                if not DEBUG_MODE:
-                    LAMP.Type.set_attachment(participant_id, 'me', 'lamp.name', f"✅ {email_address}")
-                #slack(f"Delivered EXIT SURVEY and gift card code to the Participant {participant_id} via email at {email_address}.")
+            elif len(delivered_gift_codes) == 2 and len([event for event in weekly_scores if enrolled_timestamp + ((PAYMENT_2_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY) <= event[0] <= enrolled_timestamp + ((PAYMENT_3_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_3_DAYS:
+                if payment_auth['payment_authorization_2']['done'] == 0:
+                    slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} did not complete required payment authorization 2. Witholding payment 3")
+                else:
+                    payout_amount = "$20"
+                    payment_auth_link = payment_auth['payment_authorization_3']['link']
+
+            elif len(delivered_gift_codes) == 3:
+                if payment_auth['payment_authorization_2']['done'] == 0:
+                    slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} did not complete required payment authorization 3.")
+
+            else:
+                log.info(f"No gift card codes to deliver to Participant {participant_id} -- already delivered {len(delivered_gift_codes)}.")
+
+            # Begin the process of vending the payout amount. Also used to track whether we have sent a PHQ-9 notice.
+            if payout_amount is not None:
+                log.info(f"Participant {participant_id} was approved for a payout of amount {payout_amount}.")
+                slack(f"Participant {participant_id} was approved for a payout of amount {payout_amount}.")
+                
+                # Retreive an available gift card code from the study registry and deliver the email. 
+                # NOTE: Not wrapped in try-catch because this Tag MUST exist prior to running this script.
+                gift_codes = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.college_study_2.gift_codes')['data']
+                if len(gift_codes[payout_amount]) > 0:
+                    # We have a gift card code allocated to send to this participant.
+                    participant_code = gift_codes[payout_amount].pop()
+                    push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing your weekly activities! Here's your Amazon Gift Card Code: [{participant_code}]. Please ensure you fill out a payment form ASAP: {payment_auth_link}")
+                    log.info(f"Delivered gift card code {participant_code} to the Participant {participant_id} via email.")
+                    slack(f"Delivered gift card code {participant_code} to the Participant {participant_id} via email at {email_address}.")
+
+                    # Mark the gift card code as claimed by a participant and remove it from the study registry.
+                    if DEBUG_MODE:
+                        log.debug(pformat(delivered_gift_codes + [participant_code]))
+                    else:
+                        LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_2.gift_codes', gift_codes)
+                        LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_2.delivered_gift_codes', delivered_gift_codes + [participant_code])
+                    log.info(f"Marked gift card code {participant_code} as claimed by Participant {participant_id}.")
+                else:
+                    # We have no more gift card codes left - send an alert instead.
+                    push(f"mailto:{SUPPORT_EMAIL}", f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
+                    slack(f"[URGENT] No gift card codes remaining!\nCould not find a gift card code for amount {payout_amount} to send to {email_address}. Please refill gift card codes.")
+
+                # Additional offboarding/exit survey procedures and update the "lamp.name" to add a FINISHED indicator.
+                if payout_amount == "$s20":
+                    push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing the study. Please complete the exit survey: {REDCAP_EXIT_SURVEY_LINK} -- You no longer need to fill out surveys and you can delete the app at any time now! Thank you!")
+                    if not DEBUG_MODE:
+                        LAMP.Type.set_attachment(participant_id, 'me', 'lamp.name', f"✅ {email_address}")
+                    #slack(f"Delivered EXIT SURVEY and gift card code to the Participant {participant_id} via email at {email_address}.")
     else:
         log.info(f"No gift card codes to deliver to Participant {participant_id}.")
 
@@ -793,6 +822,18 @@ def automations_worker():
         # Iterate across all RECENT (only the previous day) patient data.
         all_participants = LAMP.Participant.all_by_study(study['id'])['data']
         for participant in all_participants:
+
+            #Check if participant is valid via redcap activities
+            try:
+                redcap_status = LAMP.Type.get_attachment(participant['id'], REDCAP_ID_ATTACH)['data']
+                if redcap_status < 0: #then discontinue and unenroll
+                    slack(f"[REDCAP FAILURE] Participant {participant['id']} did not complete Redcap enrollment activities. Removing...")
+                    continue
+            except:
+                slack(f"[REDCAP FAILURE] Participant {participant['id']} does not have a redcap status attachment.")
+                continue
+
+
 
             log.info(f"Processing Participant \"{participant['id']}\".")
             data = LAMP.ActivityEvent.all_by_participant(participant['id'])['data']
