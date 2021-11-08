@@ -882,5 +882,5 @@ def automations_worker():
 
 # Driver code to accept HTTP requests and run the automations worker on repeat.
 if __name__ == '__main__':
-    RepeatTimer(APP_REPEAT_SCHEDULE, automations_worker).start() # loop: every3h
+    RepeatTimer(3*60*60, automations_worker).start() # loop: every3h
     app.run(host='0.0.0.0', port=3000, debug=False)
