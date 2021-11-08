@@ -831,16 +831,12 @@ def automations_worker():
                     slack(f"[REDCAP FAILURE] Participant {participant['id']} did not complete Redcap enrollment activities. Removing...")
                     try: 
                         LAMP.Participant.delete(participant['id']) 
+                        continue
                     except: 
-                        pass
-                    continue
+                        continue
+                    
             except:
-                slack(f"[REDCAP FAILURE] Participant {participant['id']} does not have a redcap status attachment. Removing...")
-                try: 
-                    LAMP.Participant.delete(participant['id']) 
-                except: pass
-                continue
-
+                slack(f"[REDCAP FAILURE] Participant {participant['id']} does not have a redcap status attachment. Please see")
 
 
             log.info(f"Processing Participant \"{participant['id']}\".")
