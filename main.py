@@ -149,7 +149,7 @@ PAYMENT_2_DAYS = os.getenv("PAYMENT_2_DAYS")
 PAYMENT_3_DAYS = os.getenv("PAYMENT_3_DAYS")
 PAYMENT_LENCIENCY_DAYS = os.getenv("PAYMENT_LENCIENCY_DAYS")
 REDCAP_EXIT_SURVEY_LINK = os.getenv("REDCAP_EXIT_SURVEY_LINK")
-REDCAP_ID_ATTACH = os.getenv("REDCAP_ID_ATTACH") 'org.digitalpsych.college_study_2.redcap_id'
+REDCAP_ID_ATTACH = os.getenv("REDCAP_ID_ATTACH") 
 REDCAP_SURVEY_ATTACH = os.getenv("REDCAP_SURVEY_ATTACH")
 
 # TODO: Convert to service account and "me" ID. Move all configuration into a Tag on "me".
