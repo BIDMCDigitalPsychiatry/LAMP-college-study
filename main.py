@@ -566,11 +566,26 @@ def unenrollment_update(participant_id, reason):
     todays_date = str(datetime.date.today())
     if todays_date not in unenrollment:
         unenrollment[todays_date] = {r:[] for r in UNENROLLMENT_REASONS}
-    unenrollment[todays_date][reason].append(participant_id)
+
+    if participant_id not in unenrollment[todays_date][reason]:
+        unenrollment[todays_date][reason].append(participant_id)
 
     LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_2.unenrollment', unenrollment)
 
+def new_user_update(participant_id):
+    """
+    Update attachmnet 'org.digitalpsych.college_study_2.new_users' with new users
 
+    """
+    new_users = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.college_study_2.new_users')['data']
+    todays_date = str(datetime.date.today())
+    if todays_date not in new_users:
+        new_users[todays_date] = []
+
+    if participant_id not in new_users[todays_date]:
+        new_users[todays_date].append(participant_id)
+
+    LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_2.new_users', new_users)
 ### WORKERS ###
 
 #Checks if days since start
@@ -868,6 +883,9 @@ def automations_worker():
                     except: 
                         pass 
                     continue
+
+                elif int(redcap_status) > 0 and int(time.time() * 1000) - enrolled['timestamp'] <= 24 * 60 * 60 * 1000:
+                    new_user.update(participant['id'])
                     
             except Exception as e:
                 print(e)
