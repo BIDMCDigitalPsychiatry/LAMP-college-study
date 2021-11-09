@@ -839,7 +839,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
 def exit_worker(participant_id, study_id, days_since_start_enrollment):
     module_scheduler.unschedule_other_surveys(participant_id, keep_these=[])
     #TODO Kill sensor collection
-    LAMP.SensorSpec.update(part, 'lamp.none')
+    LAMP.Sensor.create(study_id, {'spec':'lamp.none', 'name':'exit_sensor', 'settings':{}})
     enrolled = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_2.enrolled')['data']#['status']
     enrolled_status, enrolled_timestamp = enrolled['status'], enrolled['timestamp']
 
@@ -890,7 +890,7 @@ def automations_worker():
             except Exception as e:
                 print(e)
                 unenrollment_update(participant['id'], 'redcap_consent')
-                slack(f"[REDCAP FAILURE] Participant {participant['id']} does not have a redcap status attachment or enrolled tag. Please see")
+                slack(f"[REDCAP FAILURE] Participant {participant['id']} does not have a redcap status attachment or enrolled tag.")
 
 
 
