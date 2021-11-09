@@ -173,6 +173,7 @@ ACTIVITY_SCHEDULE_MAP = {
 }
 TRIAL_SURVEY_SCHEDULE = ['Trial Period Day 1', 'Trial Period Day 2', 'Trial Period Day 3']
 ENROLLMENT_SURVEY_SCHEDULE = ['Morning Daily Survey', 'Afternoon Daily Survey']
+UNENROLLMENT_REASONS = ['redcap_consent', 'redcap_payment_auth', 'trial_period', 'enrollment_period']
 
 # Helper class to create a repeating timer thread that executes a worker function.
 class RepeatTimer(Timer):
@@ -551,6 +552,27 @@ def index(path):
     else:
         return html(f"<p>There was an error processing your request.</p>")
 
+### Helper code ###
+def unenrollment_update(participant_id, reason):
+    """
+    Update attachment 'org.digitalpsych.college_study_2.unenrollment' with participants 
+    who fail study requirements at various phases of the study
+    """
+    if reason not in UNENROLLMENT_REASONS:
+        log.info(f'[UNENROLLMENT ERROR] Unknown reason of {reason} for participant {participant_id}')
+        return
+        
+    unenrollment = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.college_study_2.unenrollment')['data']
+    todays_date = str(datetime.date.today())
+    if todays_date not in unenrollment:
+        unenrollment[todays_date] = {r:[] for r in UNENROLLMENT_REASONS}
+    unenrollment[todays_date][reason].append(participant_id)
+
+    LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_2.unenrollment', unenrollment)
+
+
+### WORKERS ###
+
 #Checks if days since start
 def trial_worker(participant_id, study_id, days_since_start_trial):
     #We need to check:
@@ -610,9 +632,10 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
 
         # If # of trial surveys or GPS sampling frequency does not meet threshold
         if len(trial_scores) < len(trial_surveys) or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
-
+            unenrollment_update(participant_id, 'trial_period')
             #does not meet threshold; do not enroll
             slack(f"[Data Quality Threshold] {participant_id} \n This participant did not meet data quality threshold in the trial period  (days_since_start_trial = {days_since_start_trial}). Please discontinue.")
+
             return 
 
 
@@ -698,6 +721,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
             payment_auth = LAMP.Type.get_attachment(participant_id, REDCAP_SURVEY_ATTACH)['data']
         except: 
             slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} does not have payment auth attachment. Please figure out...")
+            unenrollment_update(participant_id, 'redcap_payment_auth')
             payment_auth = None
 
         if payment_auth != None:
@@ -709,6 +733,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
             elif len(delivered_gift_codes) == 1 and len([event for event in weekly_scores if enrolled_timestamp + ((PAYMENT_1_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY) <= event[0] <= enrolled_timestamp + ((PAYMENT_2_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_2_DAYS:
                 if payment_auth['payment_authorization_1']['done'] == 0:
                     slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} did not complete required payment authorization 1. Witholding payment 2")
+                    unenrollment_update(participant_id, 'redcap_payment_auth')
                 else:
                     payout_amount = "$15"
                     payment_auth_link = payment_auth['payment_authorization_2']['link']
@@ -716,6 +741,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
             elif len(delivered_gift_codes) == 2 and len([event for event in weekly_scores if enrolled_timestamp + ((PAYMENT_2_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY) <= event[0] <= enrolled_timestamp + ((PAYMENT_3_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_3_DAYS:
                 if payment_auth['payment_authorization_2']['done'] == 0:
                     slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} did not complete required payment authorization 2. Witholding payment 3")
+                    unenrollment_update(participant_id, 'redcap_payment_auth')
                 else:
                     payout_amount = "$20"
                     payment_auth_link = payment_auth['payment_authorization_3']['link']
@@ -723,6 +749,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
             elif len(delivered_gift_codes) == 3:
                 if payment_auth['payment_authorization_2']['done'] == 0:
                     slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} did not complete required payment authorization 3.")
+                    unenrollment_update(participant_id, 'redcap_payment_auth')
 
             else:
                 log.info(f"No gift card codes to deliver to Participant {participant_id} -- already delivered {len(delivered_gift_codes)}.")
@@ -779,6 +806,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
 
     activity_events_past_5_days = LAMP.ActivityEvent.all_by_participant(participant_id, _from=int(time.time()*1000) - (MS_IN_A_DAY * 5))['data']
     if len(activity_events_past_5_days) == 0 or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
+        unenrollment_update(participant_id, 'enrollment_period')
         slack(f"[Data Qualtiy Threshold] {participant_id} \n This participant did not meet data quality threshold in the enrollment period  (days_since_start_enrollment = {days_since_start_enrollment}). Please discontinue.")
         return
 
@@ -829,6 +857,7 @@ def automations_worker():
                 enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled')['data']
                 redcap_status = LAMP.Type.get_attachment(participant['id'], REDCAP_ID_ATTACH)['data']
                 if int(redcap_status) <= 0 and int(time.time() * 1000) - enrolled['timestamp'] >= 1 * 60 * 1000: #then discontinue and unenroll
+                    unenrollment_update(participant['id'], 'redcap_consent')
                     slack(f"[REDCAP FAILURE] Participant {participant['id']} did not complete Redcap enrollment activities. Removing...")
                     push(f"mailto:{request_email}", f"LAMP Study Status \n Due to the absence of required enrollment documents on Redcap, your account is being removed from the study. Please contact support staff if you have any questions.")
                     try: 
@@ -839,6 +868,7 @@ def automations_worker():
                     
             except Exception as e:
                 print(e)
+                unenrollment_update(participant['id'], 'redcap_consent')
                 slack(f"[REDCAP FAILURE] Participant {participant['id']} does not have a redcap status attachment or enrolled tag. Please see")
 
 
