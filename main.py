@@ -859,7 +859,7 @@ def automations_worker():
             try:
                 enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled')['data']
                 redcap_status = LAMP.Type.get_attachment(participant['id'], REDCAP_ID_ATTACH)['data']
-                if int(redcap_status) <= 0 and int(time.time() * 1000) - enrolled['timestamp'] >= 1 * 60 * 1000: #then discontinue and unenroll
+                if int(redcap_status) <= 0 and int(time.time() * 1000) - enrolled['timestamp'] >= 6 * 60 * 60 * 1000: #then discontinue and unenroll
                     unenrollment_update(participant['id'], 'redcap_consent')
                     slack(f"[REDCAP FAILURE] Participant {participant['id']} did not complete Redcap enrollment activities. Removing...")
                     push(f"mailto:{request_email}", f"LAMP Study Status \n Due to the absence of required enrollment documents on Redcap, your account is being removed from the study. Please contact support staff if you have any questions.")
