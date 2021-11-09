@@ -561,7 +561,7 @@ def unenrollment_update(participant_id, reason):
     if reason not in UNENROLLMENT_REASONS:
         log.info(f'[UNENROLLMENT ERROR] Unknown reason of {reason} for participant {participant_id}')
         return
-        
+
     unenrollment = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.college_study_2.unenrollment')['data']
     todays_date = str(datetime.date.today())
     if todays_date not in unenrollment:
@@ -851,7 +851,10 @@ def automations_worker():
         all_participants = LAMP.Participant.all_by_study(study['id'])['data']
         for participant in all_participants:
 
-            request_email = LAMP.Type.get_attachment(participant['id'], 'lamp.name')['data']
+            try:
+                request_email = LAMP.Type.get_attachment(participant['id'], 'lamp.name')['data']
+            except:
+                request_email = study['name']
             #Check if participant is valid via redcap activities
             try:
                 enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled')['data']
@@ -862,9 +865,9 @@ def automations_worker():
                     push(f"mailto:{request_email}", f"LAMP Study Status \n Due to the absence of required enrollment documents on Redcap, your account is being removed from the study. Please contact support staff if you have any questions.")
                     try: 
                         LAMP.Participant.delete(participant['id']) 
-                        continue
                     except: 
-                        continue
+                        pass 
+                    continue
                     
             except Exception as e:
                 print(e)
