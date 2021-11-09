@@ -617,6 +617,7 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
                                                feature="gps",
                                                bin_size=1000 * 60)['data'])
 
+
         # set support phone as tip
         support_number_value = None
         support_number_text = "What is the phone number of your college mental health center?"
@@ -881,7 +882,8 @@ def automations_worker():
                     continue
 
                 elif int(redcap_status) > 0 and int(time.time() * 1000) - enrolled['timestamp'] <= 24 * 60 * 60 * 1000:
-                    new_user_update(participant['id'])
+                    #new_user_update(participant['id'])
+                    pass
                     
             except Exception as e:
                 print(e)
