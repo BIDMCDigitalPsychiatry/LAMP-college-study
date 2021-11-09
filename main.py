@@ -649,8 +649,6 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
         if len(trial_scores) < len(trial_surveys) or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
             unenrollment_update(participant_id, 'trial_period')
             #does not meet threshold; do not enroll
-            slack(f"[Data Quality Threshold] {participant_id} \n This participant did not meet data quality threshold in the trial period  (days_since_start_trial = {days_since_start_trial}). Please discontinue.")
-
             return 
 
 
@@ -735,7 +733,6 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
         try:
             payment_auth = LAMP.Type.get_attachment(participant_id, REDCAP_SURVEY_ATTACH)['data']
         except: 
-            slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} does not have payment auth attachment. Please figure out...")
             unenrollment_update(participant_id, 'redcap_payment_auth')
             payment_auth = None
 
@@ -822,7 +819,6 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
     activity_events_past_5_days = LAMP.ActivityEvent.all_by_participant(participant_id, _from=int(time.time()*1000) - (MS_IN_A_DAY * 5))['data']
     if len(activity_events_past_5_days) == 0 or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
         unenrollment_update(participant_id, 'enrollment_period')
-        slack(f"[Data Qualtiy Threshold] {participant_id} \n This participant did not meet data quality threshold in the enrollment period  (days_since_start_enrollment = {days_since_start_enrollment}). Please discontinue.")
         return
 
     #Change schedule for intervention
@@ -885,14 +881,11 @@ def automations_worker():
                     continue
 
                 elif int(redcap_status) > 0 and int(time.time() * 1000) - enrolled['timestamp'] <= 24 * 60 * 60 * 1000:
-                    new_user.update(participant['id'])
+                    new_user_update(participant['id'])
                     
             except Exception as e:
                 print(e)
                 unenrollment_update(participant['id'], 'redcap_consent')
-                slack(f"[REDCAP FAILURE] Participant {participant['id']} does not have a redcap status attachment or enrolled tag.")
-
-
 
             log.info(f"Processing Participant \"{participant['id']}\".")
             data = LAMP.ActivityEvent.all_by_participant(participant['id'])['data']
