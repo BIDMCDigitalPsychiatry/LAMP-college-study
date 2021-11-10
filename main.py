@@ -184,6 +184,7 @@ class RepeatTimer(Timer):
                 self.function(*self.args, **self.kwargs)
         except Exception as e:            
             print(traceback.format_exc())
+            slack(f"[CONTAINER CRASH] Worker is down due to error {traceback.format_exc()}")
             os._exit(2)
 
 # Helper function for an HTML response template that adds a slight theme to the page.
