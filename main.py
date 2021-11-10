@@ -182,8 +182,7 @@ class RepeatTimer(Timer):
             self.function(*self.args, **self.kwargs)
             while not self.finished.wait(self.interval):
                 self.function(*self.args, **self.kwargs)
-        except Exception as e:
-            print('Error!', e)
+        except Exception as e:            
             print(traceback.format_exc())
             os._exit(2)
 

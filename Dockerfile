@@ -5,4 +5,4 @@ RUN pip install -r /tmp/requirements.txt
 WORKDIR /app
 COPY main.py /app
 COPY module_scheduler.py /app
-CMD ["python", "main.py"]
+CMD ["python", "-u", "main.py"]
