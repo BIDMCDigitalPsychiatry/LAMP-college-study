@@ -594,7 +594,7 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
     # 1. Dummy activities complete
     # 2. Appropriate sensor data
 
-    if days_since_start_trial < TRIAL_DAYS: #if in trial period, don't do anyting
+    if float(days_since_start_trial) < float(TRIAL_DAYS): #if in trial period, don't do anyting
         pass
 
     else: # attempt to move into enrollment period
