@@ -617,7 +617,7 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
                                                end=int(time.time() * 1000),
                                                resolution=MS_IN_A_DAY,
                                                feature="gps",
-                                               bin_size=1000 * 60)['data'])
+                                               bin_size=1000 * 60 * 10)['data'])
 
 
         # set support phone as tip
@@ -817,7 +817,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
                                        end=int(time.time() * 1000),
                                        resolution=MS_IN_A_DAY,
                                        feature="gps",
-                                       bin_size=1000 * 60)['data'])
+                                       bin_size=1000 * 60 * 10)['data'])
 
     activity_events_past_5_days = LAMP.ActivityEvent.all_by_participant(participant_id, _from=int(time.time()*1000) - (MS_IN_A_DAY * 5))['data']
     if len(activity_events_past_5_days) == 0 or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
