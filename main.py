@@ -587,6 +587,7 @@ def new_user_update(participant_id):
         new_users[todays_date].append(participant_id)
 
     LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_2.new_users', new_users)
+
 ### WORKERS ###
 
 #Checks if days since start
@@ -882,9 +883,8 @@ def automations_worker():
                         pass 
                     continue
 
-                elif int(redcap_status) > 0 and int(time.time() * 1000) - enrolled['timestamp'] <= 24 * 60 * 60 * 1000:
-                    #new_user_update(participant['id'])
-                    pass
+                elif int(redcap_status) > 0 and enrolled['status'] == 'trial' and int(time.time() * 1000) - enrolled['timestamp'] <= 24 * 60 * 60 * 1000:
+                    new_user_update(participant['id'])
                     
             except Exception as e:
                 print(e)
@@ -897,7 +897,6 @@ def automations_worker():
 
             #Check to see if enrolled tag exists
             try:
-                enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled')['data']
                 enrolled_status, enrolled_timestamp = enrolled['status'], enrolled['timestamp']
                 if enrolled_status == 'completed':
                     continue
