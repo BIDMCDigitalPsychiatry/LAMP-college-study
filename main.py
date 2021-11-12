@@ -864,7 +864,7 @@ def automations_worker():
         # Iterate across all RECENT (only the previous day) patient data.
         all_participants = LAMP.Participant.all_by_study(study['id'])['data']
         for participant in all_participants:
-
+            log.info(f"Processing Participant \"{participant['id']}\".")
             try:
                 request_email = LAMP.Type.get_attachment(participant['id'], 'lamp.name')['data']
             except:
@@ -873,7 +873,7 @@ def automations_worker():
             try:
                 enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled')['data']
                 redcap_status = LAMP.Type.get_attachment(participant['id'], REDCAP_ID_ATTACH)['data']
-                if int(redcap_status) <= 0 and int(time.time() * 1000) - enrolled['timestamp'] >= 6 * 60 * 60 * 1000: #then discontinue and unenroll
+                if int(redcap_status) <= 0 and int(time.time() * 1000) - enrolled['timestamp'] >= 6 * 60 * 60 * 1000: #then discontinue and unenroll                    
                     unenrollment_update(participant['id'], 'redcap_consent')
                     slack(f"[REDCAP FAILURE] Participant {participant['id']} did not complete Redcap enrollment activities. Removing...")
                     push(f"mailto:{request_email}", f"LAMP Study Status \n Due to the absence of required enrollment documents on Redcap, your account is being removed from the study. Please contact support staff if you have any questions.")
@@ -887,10 +887,8 @@ def automations_worker():
                     new_user_update(participant['id'])
                     
             except Exception as e:
-                print(e)
-                unenrollment_update(participant['id'], 'redcap_consent')
-
-            log.info(f"Processing Participant \"{participant['id']}\".")
+                print(e)                
+            
             data = LAMP.ActivityEvent.all_by_participant(participant['id'])['data']
             if len(data) == 0: continue
             days_since_start = (int(time.time() * 1000) - data[-1]['timestamp']) / (24 * 60 * 60 * 1000) # MILLISECONDS_PER_DAY
