@@ -5,4 +5,5 @@ RUN pip install -r /tmp/requirements.txt
 WORKDIR /app
 COPY main.py /app
 COPY module_scheduler.py /app
+COPY redcap.py /app
 CMD ["python", "-u", "main.py"]
