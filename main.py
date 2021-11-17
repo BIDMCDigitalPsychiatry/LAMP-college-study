@@ -892,11 +892,12 @@ def automations_worker():
                     unenrollment_update(participant['id'], 'redcap_consent')
                     slack(f"[REDCAP FAILURE] Participant {participant['id']} did not complete Redcap enrollment activities. Removing...")
                     push(f"mailto:{request_email}", f"LAMP Study Status \n Due to the absence of required enrollment documents on Redcap, your account is being removed from the study. Please contact support staff if you have any questions.")
-                    try: 
-                        LAMP.Participant.delete(participant['id']) 
-                    except: 
-                        pass 
-                    continue
+                    # Participant deletion cut off!
+                    # try: 
+                    #     LAMP.Participant.delete(participant['id']) 
+                    # except: 
+                    #     pass 
+                    # continue
 
                 elif int(redcap_status) > 0 and enrolled['status'] == 'trial' and int(time.time() * 1000) - enrolled['timestamp'] <= 24 * 60 * 60 * 1000:
                     new_user_update(participant['id'])
