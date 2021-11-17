@@ -17,6 +17,7 @@ from flask import Flask, request
 import pandas as pd
 
 import module_scheduler
+import redcap
 
 VEGA_SPEC_ALL = {
     "$schema": "https://vega.github.io/schema/vega-lite/v4.json",
@@ -152,6 +153,7 @@ PAYMENT_LENIENCY_DAYS = float(os.getenv("PAYMENT_LENIENCY_DAYS"))
 REDCAP_EXIT_SURVEY_LINK = os.getenv("REDCAP_EXIT_SURVEY_LINK")
 REDCAP_ID_ATTACH = os.getenv("REDCAP_ID_ATTACH") 
 REDCAP_SURVEY_ATTACH = os.getenv("REDCAP_SURVEY_ATTACH")
+REDCAP_PAYMENT_SURVEY_COMPLETION = os.getenv("REDCAP_PAYMENT_SURVEY_COMPLETION")
 
 # TODO: Convert to service account and "me" ID. Move all configuration into a Tag on "me".
 
@@ -461,7 +463,11 @@ def index(path):
 
             #Find new this new study
             all_studies = LAMP.Study.all_by_researcher(RESEARCHER_ID)['data']
-            study_id = [study for study in all_studies if study['name'] == request_email][0]['id']
+            studies = [study for study in all_studies if study['name'] == request_email]
+            if len(studies) > 1:
+                slack(f"[DUPLICATE STUDY] Multiple studies under the email {request_email}")
+
+            study_id = studies[0]['id']
             participant_id = LAMP.Participant.all_by_study(study_id)['data'][0]['id']
             LAMP.Type.set_attachment(participant_id, 'me', 'lamp.name', request_email)
 
@@ -470,7 +476,7 @@ def index(path):
             
             # set enrollment tag
             LAMP.Type.set_attachment(participant_id, 'me', 'org.digitalpsych.college_study_2.enrolled', {'status':'trial', 'timestamp':int(time.time()*1000)}) 
-            
+        
             log.info(f"Configured Participant ID {participant_id} with a generated login credential using {request_email}.")
 
         except:
@@ -739,30 +745,35 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
             unenrollment_update(participant_id, 'redcap_payment_auth')
             payment_auth = None
 
+        try:
+            payment_auth_complete = LAMP.Type.get_attachment(participant_id, REDCAP_PAYMENT_SURVEY_COMPLETION)['data']
+        except:
+            unenrollment_update(participant_id, 'redcap_payment_auth')
+
         if payment_auth != None:
             payout_amount = None
             if len(delivered_gift_codes) == 0 and len([event for event in weekly_scores if enrolled_timestamp <= event[0] <= enrolled_timestamp + ((PAYMENT_1_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_1_DAYS:
                 payout_amount = "$15"
-                payment_auth_link = payment_auth['payment_authorization_1']['link']
+                payment_auth_link = payment_auth['payment_authorization_1']
 
             elif len(delivered_gift_codes) == 1 and len([event for event in weekly_scores if enrolled_timestamp + ((PAYMENT_1_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY) <= event[0] <= enrolled_timestamp + ((PAYMENT_2_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_2_DAYS:
-                if payment_auth['payment_authorization_1']['done'] == 0:
+                if payment_auth_complete['payment_authorization_1'] == 0:
                     slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} did not complete required payment authorization 1. Witholding payment 2")
                     unenrollment_update(participant_id, 'redcap_payment_auth')
                 else:
                     payout_amount = "$15"
-                    payment_auth_link = payment_auth['payment_authorization_2']['link']
+                    payment_auth_link = payment_auth['payment_authorization_2']
 
             elif len(delivered_gift_codes) == 2 and len([event for event in weekly_scores if enrolled_timestamp + ((PAYMENT_2_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY) <= event[0] <= enrolled_timestamp + ((PAYMENT_3_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_3_DAYS:
-                if payment_auth['payment_authorization_2']['done'] == 0:
+                if payment_auth_complete['payment_authorization_2'] == 0:
                     slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} did not complete required payment authorization 2. Witholding payment 3")
                     unenrollment_update(participant_id, 'redcap_payment_auth')
                 else:
                     payout_amount = "$20"
-                    payment_auth_link = payment_auth['payment_authorization_3']['link']
+                    payment_auth_link = payment_auth['payment_authorization_3']
 
             elif len(delivered_gift_codes) == 3:
-                if payment_auth['payment_authorization_2']['done'] == 0:
+                if payment_auth_complete['payment_authorization_2'] == 0:
                     slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} did not complete required payment authorization 3.")
                     unenrollment_update(participant_id, 'redcap_payment_auth')
 
@@ -848,6 +859,10 @@ def exit_worker(participant_id, study_id, days_since_start_enrollment):
 
 # The Automations worker listens to changes in the study's patient data and triggers interventions.
 def automations_worker():
+    #Start with redcap
+    redcap.set_redcap_attachments()
+
+    #Now rest of work
     log.info('Awakening automations worker for processing...')
     REVERSE_CODING = ["i was able to function well today", "today I could handle what came my way"]
 
@@ -872,7 +887,7 @@ def automations_worker():
             #Check if participant is valid via redcap activities
             try:
                 enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled')['data']
-                redcap_status = LAMP.Type.get_attachment(participant['id'], REDCAP_ID_ATTACH)['data']
+                redcap_status = redcap.check_participant_redcap(request_email)
                 if int(redcap_status) <= 0 and int(time.time() * 1000) - enrolled['timestamp'] >= 6 * 60 * 60 * 1000: #then discontinue and unenroll                    
                     unenrollment_update(participant['id'], 'redcap_consent')
                     slack(f"[REDCAP FAILURE] Participant {participant['id']} did not complete Redcap enrollment activities. Removing...")
