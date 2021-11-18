@@ -884,23 +884,27 @@ def automations_worker():
                 request_email = LAMP.Type.get_attachment(participant['id'], 'lamp.name')['data']
             except:
                 request_email = study['name']
+
             #Check if participant is valid via redcap activities
             try:
                 enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled')['data']
                 redcap_status = redcap.check_participant_redcap(request_email)
-                if int(redcap_status) <= 0 and int(time.time() * 1000) - enrolled['timestamp'] >= 6 * 60 * 60 * 1000: #then discontinue and unenroll                    
-                    unenrollment_update(participant['id'], 'redcap_consent')
-                    slack(f"[REDCAP FAILURE] Participant {participant['id']} did not complete Redcap enrollment activities. Removing...")
-                    push(f"mailto:{request_email}", f"LAMP Study Status \n Due to the absence of required enrollment documents on Redcap, your account is being removed from the study. Please contact support staff if you have any questions.")
-                    # Participant deletion cut off!
-                    # try: 
-                    #     LAMP.Participant.delete(participant['id']) 
-                    # except: 
-                    #     pass 
-                    # continue
+                if enrolled['status'] == 'trial':
+                    if int(time.time() * 1000) - enrolled['timestamp'] < 24 * 60 * 60 * 1000:
+                        pass
+                    elif int(redcap_status) <= 0: #then discontinue and unenroll                    
+                        unenrollment_update(participant['id'], 'redcap_consent')
+                        slack(f"[REDCAP FAILURE] Participant {participant['id']} did not complete Redcap enrollment activities. Removing...")
+                        #push(f"mailto:{request_email}", f"LAMP Study Status \n Due to the absence of required enrollment documents on Redcap, your account is being removed from the study. Please contact support staff if you have any questions.")
+                        #Participant deletion cut off!
+                        # try: 
+                        #     LAMP.Participant.delete(participant['id']) 
+                        # except: 
+                        #     pass 
+                        # continue
 
-                elif int(redcap_status) > 0 and enrolled['status'] == 'trial' and int(time.time() * 1000) - enrolled['timestamp'] <= 24 * 60 * 60 * 1000:
-                    new_user_update(participant['id'])
+                    elif 24 * 60 * 60 * 1000 <= int(time.time() * 1000) - enrolled['timestamp'] <= 48 * 60 * 60 * 1000:
+                        new_user_update(participant['id'])
                     
             except Exception as e:
                 print(e)                
