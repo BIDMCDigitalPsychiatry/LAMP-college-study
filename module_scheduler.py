@@ -4,48 +4,26 @@ import datetime
 import random
 
 MS_IN_DAY = 86400000
-message_text = {"behavioral_activation": "Hi! This week you have been assigned the " +
-                                             "'behavioral activation' module. Behavioral activation" +
-                                             " has to do with the way that behaviors and feelings can " +
-                                             "impact each other. This module should help you examine how" +
-                                             " certain activities can impact your mood. First, as usual," +
-                                             " you should get a notification to look at the Learn tip about" +
-                                             " behavioral activation. Then, each day there is an activity" +
-                                             " that will ask you to think about an activity you did that day," +
-                                             " rate how easy or difficult it was for you to do, and think about" +
-                                             " how doing that activity influenced your mood or mental health" +
-                                             " symptoms. The goal is to have a list of activities at the end" +
-                                             " of the week that you know to be beneficial for your mental health.",
+message_text = {
                    "thought_patterns_beginner": "Hi! This week you have been assigned the 'thought patterns'" +
-                                             " module. In your feed you’ll see that there’s a 'Learn Tip' assigned" +
-                                             " for tomorrow called Identifying Thought Patterns. You’ll see there are" +
+                                             " module. If you click on the Day 1 survey group you’ll be taken to a 'Learn Tip'" +
+                                             " called Identifying Thought Patterns. You’ll see there are" +
                                              " 2 sections. The first has a video that is an overview of what 'automatic " +
                                              "thoughts' are and explains an exercise that can help you work through them." +
                                              " The second section has a list of 3 common thought patterns and examples. " +
-                                             "You should get notified once a day to try and do the 'evening activity' which" +
-                                             " is just the activity mentioned in the video called 'Record, Rationalize, Replace'" +
-                                             " and then answer a 2-question survey asking if you did the activity and if" +
-                                             " you thought it was helpful. Please don't hesitate to reach out with any questions.",
-                   "mindfulness_beginner": "Hi! This week, you have been assigned the 'mindfulness' module. In your" +
-                                             " 'Feed' for tomorrow there’s a Learn Tip about mindfulness. In the first" +
+                                             "You should get notified once a day to try " +
+                                             "the activity mentioned in the video called 'Record, Rationalize, Replace.'" +
+                                             " You'll always be asked to do a short Check-in survey afterwards. " +
+                                             "Please don't hesitate to reach out with any questions.",
+                   "mindfulness_beginner": "Hi! This week, you have been assigned the 'mindfulness' module. If you" +
+                                             " click on the Day 1 activity there’s a Learn Tip about mindfulness. In the first" +
                                              " section there’s a video about mindfulness that is an explanation of what " +
-                                             "mindfulness really is. You can also look at the other information about " +
+                                             "mindfulness is. You can also look at the other information about " +
                                              "mindfulness in the Learn tip. After today, you will get notification about" +
                                              " a mindfulness activity early in the day. These are always the same 1-minute audio. " +
                                              "Every evening there is another mindfulness activity. Some of these may be" +
-                                             " longer than others, so just do as much as you can. Then, as always, there" +
-                                             " will be a 2-question survey. Please reach out if you have any questions!",
-                   "thought_patterns_advanced": "Hi! This week you have been assigned the 'advanced thought patterns' module." +
-                                             " In your feed you’ll see that there’s a 'Learn Tip' assigned for today called" +
-                                             " Identifying Thought Patterns (advanced). This tip includes the " +
-                                             "'Automatic Thoughts' video. You may have seen this before, but it will" +
-                                             " remind you how to do the 'Record, Rationalize, Replace' activity. The" +
-                                             " Learn tip also includes a more comprehensive list of common thought patterns" +
-                                             " as well as some that you've learned before. You will get notified" +
-                                             " once a day to try and do the 'evening activity' which is just the " +
-                                             "activity mentioned in the video called 'Record, Rationalize, Replace' " +
-                                             "and then answer a 2-question survey asking if you did the activity and if" +
-                                             " you thought it was helpful. Please don't hesitate to reach out with any questions.",
+                                             " longer than others. Then, as always, there" +
+                                             " will be a short Check-in survey. Please reach out if you have any questions!",
                    "games": "This week's module focuses on cognitive enhancement therapy. There are 2 'brain games' that" +
                                              " you'll be assigned to play throughout the week. Although there are" +
                                              " instructions on each game when you open it, you can always come back" +
@@ -62,43 +40,13 @@ message_text = {"behavioral_activation": "Hi! This week you have been assigned t
                                              " order and then tap those same boxes in **REVERSE ORDER** from how" +
                                              " they appeared. Each level will have more boxes in lit up in the" +
                                              " sequence. See how far you can get! As always, there's a little" +
-                                             " evening survey just asking if you did the activity.",
+                                             " Check-in survey after the activity.",
                    "journal": "This week's module centers around the journal. You'll get a notification to" +
                                              " do the journal activity each day. It's essentially a free-write" +
                                              " space. You can jot down anything about how you're feeling, or" +
                                              " just use it reflect. The goal is to spend some time each day" +
                                              " reflecting on your thoughts, activities, and moods. As always," +
-                                             " there will be a 2-question daily survey about the activity.",
-                   "strengths": "This week's module focuses on identifying your strengths and recognizing" +
-                                             " them in your daily life. Focusing on how you use your" +
-                                             " strengths is a superb way to build self-confidence and" +
-                                             " feelings of self-worth. You will start by watching the" +
-                                             " video in the Learn tip about strengths. You can also refer" +
-                                             " to the list of positive traits in the learn tip to get started" +
-                                             " thinking about your personal strengths! Then, every day you" +
-                                             " will make a plan for how you are going to employ your strength." +
-                                             " In the evening you will answer a 2-question survey to reflect" +
-                                             " on whether you were able to carry out your plan. As always," +
-                                             " reach out if you have any questions!",
-                   "gratitude_journal": "This week's module centers around gratitude. Practicing gratitude" +
-                                             " regularly has been shown to increase positive emotions" +
-                                             " and improve well-being. This week, you will see a Learn" +
-                                             " Tip with a video explaining why gratitude is important" +
-                                             " and how it can improve our mental wellness. Next, each" +
-                                             " day you will have a different survey asking you to reflect" +
-                                             " on the day and express gratitude for things that happened" +
-                                             " in your day. Try to include some detail in your response to" +
-                                             " get a sense of why this person/event/thing was important to you." +
-                                             " Each day's survey will have different prompts. Remember, you" +
-                                             " can always access your past responses in the 'Prevent' Page" +
-                                             " if you want to reflect on these gratitude entries. Then," +
-                                             " as always, there will be a 2 question survey at the end of" +
-                                             " the day asking about how the activity went.",
-                   "mindfulness_advanced": "This week, you have been assigned the 'advanced mindfulness' module. " +
-                                             "After today, you will get notification about a mindfulness activity" +
-                                             " early in the day. Some may be longer than others, so just do" +
-                                             " as much as you can. Every evening there is a little 'evening activity'" +
-                                             " which includes a 1-minute mindfulness followed by a 2 question survey.",}
+                                             " there will be a Check-in survey.",}
 
 def schedule_module(part_id, module_name, start_time):
     """ Schedule a module.
