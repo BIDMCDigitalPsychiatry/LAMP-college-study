@@ -298,13 +298,11 @@ def schedule_module_batch(part_id, study_id, module_name, start_time):
     elif module_name == "journal":
         sucess = _schedule_module_helper_batch(part_id, study_id,
                                 {
-                                    "Journal Day 1": ["Journal!",
-                                                      "Check-in Survey"],
-                                    "Journal Day 2-7": ["Journal!",
+                                    "Journal Day 1-7": ["Journal",
                                                         "Check-in Survey"],
                                 },
-                                ["none", "daily"],
-                                [start_time, start_time + MS_IN_DAY])
+                                ["daily"],
+                                [start_time])
 
     elif module_name == "games":
         sucess = _schedule_module_helper_batch(part_id, study_id,
