@@ -19,6 +19,7 @@ import pandas as pd
 import module_scheduler
 import redcap
 
+
 VEGA_SPEC_ALL = {
     "$schema": "https://vega.github.io/schema/vega-lite/v4.json",
     "background": "#00000000",
@@ -696,7 +697,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
     ]
 
     #Retrieve the Participant's email address from their assigned Credential.
-    email_address = LAMP.Credential.list(participant_id)['data'][0]['access_key']
+    email_address = LAMP.Type.get_attachment(participant['id'], 'lamp.name')['data']#LAMP.Credential.list(participant_id)['data'][0]['access_key']
     
     # Continue processing after attending to PHQ-9 suicide Q score -> push notification in past 3 hours
     weekly_scores_3_hrs = [s for s in weekly_scores if s[0] >= int(time.time()*1000) - (1000 * 60 * 60 * 3)]
@@ -881,7 +882,10 @@ def automations_worker():
         # Iterate across all RECENT (only the previous day) patient data.
         all_participants = LAMP.Participant.all_by_study(study['id'])['data']
         for participant in all_participants:
+
             log.info(f"Processing Participant \"{participant['id']}\".")
+
+
             try:
                 request_email = LAMP.Type.get_attachment(participant['id'], 'lamp.name')['data']
             except:

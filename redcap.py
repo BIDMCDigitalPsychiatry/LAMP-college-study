@@ -3,6 +3,7 @@ import datetime
 import os
 
 RESEARCHER_ID = os.getenv("RESEARCHER_ID")
+
 # ---------------------- Functions ---------------------- #
 def check_participant_redcap(email):
     """ Check that the participant:
