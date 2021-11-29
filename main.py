@@ -697,7 +697,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
     ]
 
     #Retrieve the Participant's email address from their assigned Credential.
-    email_address = LAMP.Type.get_attachment(participant['id'], 'lamp.name')['data']#LAMP.Credential.list(participant_id)['data'][0]['access_key']
+    email_address = LAMP.Type.get_attachment(participant_id, 'lamp.name')['data']#LAMP.Credential.list(participant_id)['data'][0]['access_key']
     
     # Continue processing after attending to PHQ-9 suicide Q score -> push notification in past 3 hours
     weekly_scores_3_hrs = [s for s in weekly_scores if s[0] >= int(time.time()*1000) - (1000 * 60 * 60 * 3)]
@@ -952,7 +952,7 @@ def automations_worker():
 
 
     log.info('Sleeping automations worker...')
-    #slack(f"Completed processing.")
+    slack(f"Completed processing.")
 
 # Driver code to accept HTTP requests and run the automations worker on repeat.
 if __name__ == '__main__':
