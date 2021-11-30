@@ -128,8 +128,8 @@ VEGA_SPEC_JOURNAL = {
     "data": {"values": []},
 }
 
-# [REQUIRED] Environment Variables
-# TODO: Remove all remaining hard-coded text/links.
+#[REQUIRED] Environment Variables
+#TODO: Remove all remaining hard-coded text/links.
 APP_NAME = os.getenv("APP_NAME")
 APP_REPEAT_SCHEDULE = os.getenv("APP_REPEAT_SCHEDULE")
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
@@ -801,7 +801,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
                         log.debug(pformat(delivered_gift_codes + [participant_code]))
                     else:
                         LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_2.gift_codes', gift_codes)
-                        LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_2.delivered_gift_codes', delivered_gift_codes + [participant_code])
+                        LAMP.Type.set_attachment(participant_id, 'me', 'org.digitalpsych.college_study_2.delivered_gift_codes', delivered_gift_codes + [participant_code])
                     log.info(f"Marked gift card code {participant_code} as claimed by Participant {participant_id}.")
                 else:
                     # We have no more gift card codes left - send an alert instead.
@@ -833,19 +833,35 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
 
     activity_events_past_5_days = LAMP.ActivityEvent.all_by_participant(participant_id, _from=int(time.time()*1000) - (MS_IN_A_DAY * 5))['data']
     if len(activity_events_past_5_days) == 0 or gps_df['value'].mean() < GPS_SAMPLING_THRESHOLD:
+        unenrollment = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.college_study_2.unenrollment')['data']
+        todays_date = str(datetime.date.today())
+        if todays_date in unenrollment:
+            if participant_id in unenrollment[todays_date]['enrollment_period']:
+                return  
+
+        push(f"mailto:{email_address}", f"LAMP Data Quality Warning\nYour data quality in the past 5 days has been insufficient. Please complete your scheduled activites and ensure that your passive data sensors are active for the LAMP app; else, your participantion in the study may be discontinued.")
         unenrollment_update(participant_id, 'enrollment_period')
         return
 
     #Change schedule for intervention
     week_index = math.floor(days_since_start_enrollment / 7)
-    if week_index <= len(ACTIVITY_SCHEDULE) - 1: 
-        #schedule new module if at beginning of week 
-        if week_index * 7 <= days_since_start_enrollment <= (week_index * 7) + 1.0:
-            module_to_schedule = ACTIVITY_SCHEDULE[week_index]
-            module_scheduler.schedule_module_batch(participant_id, study_id, module_to_schedule, start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(19, 0)).timestamp() * 1000))
-            module_scheduler.unschedule_other_surveys(participant_id, keep_these=['Morning Daily Survey', 'Weekly Survey', module_to_schedule] + ACTIVITY_SCHEDULE_MAP[module_to_schedule])
-    else:
-        module_scheduler.unschedule_other_surveys(participant_id, keep_these=[])
+    #If already scheduled on day, don't schedule
+    try:
+        last_scheduled = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_2.last_scheduled')['data']['timestamp']
+    except:
+        last_scheduled = 0
+
+    if int(time.time() * 1000) - last_scheduled >= MS_IN_A_DAY:
+        if week_index <= len(ACTIVITY_SCHEDULE) - 1: 
+            #schedule new module if at beginning of week 
+            if week_index * 7 <= days_since_start_enrollment <= (week_index * 7) + 1.0:
+                module_to_schedule = ACTIVITY_SCHEDULE[week_index]
+                module_scheduler.schedule_module_batch(participant_id, study_id, module_to_schedule, start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(19, 0)).timestamp() * 1000))
+                module_scheduler.unschedule_other_surveys(participant_id, keep_these=['Morning Daily Survey', 'Weekly Survey', module_to_schedule] + ACTIVITY_SCHEDULE_MAP[module_to_schedule])
+        else:
+            module_scheduler.unschedule_other_surveys(participant_id, keep_these=[])
+
+        LAMP.Type.set_attachment(participant_id, 'me', 'org.digitalpsych.college_study_2.last_scheduled', {'timestamp':int(time.time()*1000)})
 
 
 #Stop a participant's scheduled activities and sensor collection
@@ -884,7 +900,6 @@ def automations_worker():
         for participant in all_participants:
 
             log.info(f"Processing Participant \"{participant['id']}\".")
-
 
             try:
                 request_email = LAMP.Type.get_attachment(participant['id'], 'lamp.name')['data']
