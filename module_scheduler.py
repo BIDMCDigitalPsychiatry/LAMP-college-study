@@ -166,7 +166,7 @@ def schedule_module(part_id, module_name, start_time):
                                 ["Mindfulness",
                                  "Mindfulness Daily Survey",
                                  "Morning 4 Minute Mindfulness Body-Scan",
-                                 "Day 1 : 5-4-3-2-1 Grounding Technique",
+                                 "Day 1 - 5-4-3-2-1 Grounding Technique",
                                  "Day 2 - Breathe with your Body",
                                  "Day 3 - Breathing Exercise (Long)",
                                  "Day 4 - 3 Minute Mindfulness Breathing",
@@ -262,7 +262,7 @@ def schedule_module_batch(part_id, study_id, module_name, start_time):
         sucess = _schedule_module_helper_batch(part_id, study_id,
                                 {
                                     "Mindfulness Day 1": ["Mindfulness",
-                                                          "Day 1 : 5-4-3-2-1 Grounding Technique",
+                                                          "Day 1 - 5-4-3-2-1 Grounding Technique",
                                                           "Check-in Survey",],
                                     "Mindfulness Day 2": ["Day 2 - Breathe with your Body",
                                                           "Check-in Survey",],
