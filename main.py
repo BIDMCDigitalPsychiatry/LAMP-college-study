@@ -761,7 +761,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
             elif len(delivered_gift_codes) == 1 and len([event for event in weekly_scores if enrolled_timestamp + ((PAYMENT_1_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY) <= event[0] <= enrolled_timestamp + ((PAYMENT_2_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_2_DAYS:
                 if payment_auth_complete['payment_authorization_1'] == 0:
                     slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} did not complete required payment authorization 1. Witholding payment 2")
-                    push(f"mailto:{email_address}", f"Payment Authorization Missing\nYour payment authorization form is not uploaded for payment #2. Please complete and upload the form so that you can be compensated for your study participation.")
+                    push(f"mailto:{email_address}", f"Payment Authorization Missing\nYour payment authorization form is not uploaded for payment #1. Please complete and upload the form so that you can be compensated for your study participation.")
                     unenrollment_update(participant_id, 'redcap_payment_auth')
                 else:
                     payout_amount = "$15"
@@ -770,7 +770,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
             elif len(delivered_gift_codes) == 2 and len([event for event in weekly_scores if enrolled_timestamp + ((PAYMENT_2_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY) <= event[0] <= enrolled_timestamp + ((PAYMENT_3_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_3_DAYS:
                 if payment_auth_complete['payment_authorization_2'] == 0:
                     slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} did not complete required payment authorization 2. Witholding payment 3")
-                    push(f"mailto:{email_address}", f"Payment Authorization Missing\nYour payment authorization form is not uploaded for payment #3. Please complete and upload the form so that you can be compensated for your study participation.")
+                    push(f"mailto:{email_address}", f"Payment Authorization Missing\nYour payment authorization form is not uploaded for payment #2. Please complete and upload the form so that you can be compensated for your study participation.")
                     unenrollment_update(participant_id, 'redcap_payment_auth')
                 else:
                     payout_amount = "$20"
@@ -796,7 +796,11 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
                 if len(gift_codes[payout_amount]) > 0:
                     # We have a gift card code allocated to send to this participant.
                     participant_code = gift_codes[payout_amount].pop()
-                    push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing your weekly activities! Here's your Amazon Gift Card Code: [{participant_code}]. Please ensure you fill out a payment form ASAP: {payment_auth_link}")
+
+                    ### Temporarily remove sending codes to people ###
+                    #push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing your weekly activities! Here's your Amazon Gift Card Code: [{participant_code}]. Please ensure you fill out a payment form ASAP: {payment_auth_link}")
+                    ###
+
                     log.info(f"Delivered gift card code {participant_code} to the Participant {participant_id} via email.")
                     slack(f"Delivered gift card code {participant_code} to the Participant {participant_id} via email at {email_address}.")
 
@@ -806,6 +810,15 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
                     else:
                         LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_2.gift_codes', gift_codes)
                         LAMP.Type.set_attachment(participant_id, 'me', 'org.digitalpsych.college_study_2.delivered_gift_codes', delivered_gift_codes + [participant_code])
+
+                        ### Temporarily check to see if delivered gift codes has been properly updates
+                        delivered_gift_codes_updated = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_2.delivered_gift_codes')['data']
+                        if delivered_gift_codes_updated != delivered_gift_codes + [participant_code]:
+                            slack(f"[DELIVERED GIFT CODES DEBUG] Success\nGift code {participant_code} successfully attached for participant {participant_id}")
+                        else:
+                            slack(f"[DELIVERED GIFT CODES DEBUG] Fail\nGift code {participant_code} attachment failed for participant {participant_id}.")
+                        ###
+
                     log.info(f"Marked gift card code {participant_code} as claimed by Participant {participant_id}.")
                 else:
                     # We have no more gift card codes left - send an alert instead.
@@ -866,6 +879,9 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
             module_scheduler.unschedule_other_surveys(participant_id, keep_these=[])
 
         LAMP.Type.set_attachment(participant_id, 'me', 'org.digitalpsych.college_study_2.last_scheduled', {'timestamp':int(time.time()*1000)})
+
+    elif int(time.time() * 1000) - last_scheduled >= MS_IN_A_DAY * 7:
+        slack(f"[SCHEDULING ISSUE]\n New module scheduliung has not occurred in over a week.")
 
 
 #Stop a participant's scheduled activities and sensor collection
