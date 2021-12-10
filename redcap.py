@@ -127,7 +127,7 @@ def get_payment_completion(redcap_id):
                 ret[k] = 1
         else:
             num = k[-1]
-            if int(df[k + "_complete"]) == 2 and df["payment_auth_" + num] != "":
+            if int(df[k + "_complete"]) == 2:
                 ret[k] = 1
     return ret
 
