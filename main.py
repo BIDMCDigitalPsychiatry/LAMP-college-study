@@ -873,8 +873,8 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
             #schedule new module if at beginning of week 
             if week_index * 7 <= days_since_start_enrollment <= (week_index * 7) + 1.0:
                 module_to_schedule = ACTIVITY_SCHEDULE[week_index]
-                module_scheduler.unschedule_other_surveys(participant_id, keep_these=['Morning Daily Survey', 'Weekly Survey',])
                 module_scheduler.schedule_module_batch(participant_id, study_id, module_to_schedule, start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(19, 0)).timestamp() * 1000))
+                module_scheduler.unschedule_other_surveys(participant_id, keep_these=['Morning Daily Survey', 'Weekly Survey',] + ACTIVITY_SCHEDULE_MAP[module_to_schedule])
         else:
             module_scheduler.unschedule_other_surveys(participant_id, keep_these=[])
 
