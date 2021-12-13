@@ -869,12 +869,17 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
         last_scheduled = 0
 
     if int(time.time() * 1000) - last_scheduled >= MS_IN_A_DAY:
-        if week_index <= len(ACTIVITY_SCHEDULE) - 1: 
-            #schedule new module if at beginning of week 
-            if week_index * 7 <= days_since_start_enrollment <= (week_index * 7) + 1.0:
-                module_to_schedule = ACTIVITY_SCHEDULE[week_index]
-                module_scheduler.schedule_module_batch(participant_id, study_id, module_to_schedule, start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(19, 0)).timestamp() * 1000))
-                module_scheduler.unschedule_other_surveys(participant_id, keep_these=['Morning Daily Survey', 'Weekly Survey',] + ACTIVITY_SCHEDULE_MAP[module_to_schedule])
+        if week_index <= len(ACTIVITY_SCHEDULE) - 1:
+            # schedule module if it is wrong
+            mod = module_scheduler.get_curr_module(p)
+            if mod["wrong module"] == 1:
+                module_scheduler.schedule_module_batch(participant_id, study_id, mod["correct module"], start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(19, 0)).timestamp() * 1000))
+                module_scheduler.unschedule_other_surveys(participant_id, keep_these=['Morning Daily Survey', 'Weekly Survey',] + ACTIVITY_SCHEDULE_MAP[mod["correct module"]])
+            #schedule new module if at beginning of week
+            #if week_index * 7 <= days_since_start_enrollment <= (week_index * 7) + 1.0:
+            #    module_to_schedule = ACTIVITY_SCHEDULE[week_index]
+            #    module_scheduler.schedule_module_batch(participant_id, study_id, module_to_schedule, start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(19, 0)).timestamp() * 1000))
+            #    module_scheduler.unschedule_other_surveys(participant_id, keep_these=['Morning Daily Survey', 'Weekly Survey',] + ACTIVITY_SCHEDULE_MAP[module_to_schedule])
         else:
             module_scheduler.unschedule_other_surveys(participant_id, keep_these=[])
 
