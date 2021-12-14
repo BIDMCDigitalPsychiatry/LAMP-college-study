@@ -2,6 +2,7 @@ import LAMP
 import pandas as pd
 import datetime 
 import random
+import time
 
 MS_IN_DAY = 86400000
 message_text = {
@@ -447,3 +448,95 @@ def set_start_date(curr_time, thurs=1):
     #    end_datetime = end_datetime + datetime.timedelta(days=1)
     new_latest_time = int(end_datetime.timestamp() * 1000)
     return new_latest_time
+  
+  
+def get_curr_module(part_id):
+    """ Check what module someone is scheduled for, verify that the schedule is correct.
+
+        Args:
+            part_id: the participant id
+        Returns:
+            A dictionary in the form:
+            {"correct module": correct module,
+             "current module": [current module/s],
+             "wrong module": 1 or 0,
+             "wrong repeat intervals": ["activity0", "activity1"],
+             "wrong times": [{"activity0": time_diff0},{"activity1": time_diff1},],
+             }
+    """
+    ret = {"correct module": "",
+             "current module": "",
+             "wrong module": 0,
+             "wrong repeat intervals": [],
+             "wrong times": [],
+             }
+    module_weeks = ["thought_patterns_beginner", "journal", "mindfulness_beginner", "games"]
+    modules = {
+        "thought_patterns_beginner": [["Thought Patterns Day 1", "none", 0],
+                                      ["Thought Patterns Day 2-7", "daily", 1]],
+        "journal": [["Journal Day 1-7", "daily", 0]],
+        "mindfulness_beginner": [
+            ["Mindfulness Day 1", "none", 0],
+                  ["Mindfulness Day 2", "none", 1],
+                  ["Mindfulness Day 3", "none", 2],
+                  ["Mindfulness Day 4", "none", 3],
+                  ["Mindfulness Day 5", "none", 4],
+                  ["Mindfulness Day 6", "none", 5],
+        ],
+        "games": [["Distraction Games Day 1", "none", 0],
+                  ["Distraction Games Day 2", "none", 1],
+                  ["Distraction Games Day 3", "none", 2],
+                  ["Distraction Games Day 4", "none", 3],
+                  ["Distraction Games Day 5", "none", 4],
+                  ["Distraction Games Day 6", "none", 5],
+                  ["Distraction Games Day 7", "none", 6],],
+    }
+    # Figure out what module they are supposed to be on
+    curr_df = int(time.time() * 1000) - LAMP.Type.get_attachment(part_id, 'org.digitalpsych.college_study_2.enrolled')["data"]["timestamp"]
+    curr_time = math.floor(curr_df / MS_IN_DAY)
+    curr_mod = math.floor(curr_time / 7)
+    if curr_mod > 3:
+        ret["correct module"] = "Done"
+    else:
+        ret["correct module"] = module_weeks[curr_mod]
+
+    # Figure out what module they are scheduled for
+    acts = LAMP.Activity.all_by_participant(part_id)["data"]
+    acts = [x for x in acts if x["schedule"] != []]
+    act_df = pd.DataFrame(acts)
+
+    scheduled = []
+    if len(acts) > 0:
+        for k in modules:
+            mod = k
+            for x in modules[k]:
+                if len(act_df[act_df["name"] == x[0]]) != 1:
+                    mod = None
+            if mod is not None:
+                scheduled.append(mod)
+
+    # Check if module is correct
+    ret["current module"] = scheduled
+    if len(scheduled) != 1:
+        if ret["correct module"] != "Done":
+            ret["wrong module"] = 1
+        return ret
+    elif scheduled[0] != ret["correct module"]:
+        ret["wrong module"] = 1
+        return ret
+
+    # Check if the activity schedules are correct
+    repeat = []
+    offset_arr = []
+    day0 = int(LAMP.Type.get_attachment(part_id, 'org.digitalpsych.college_study_2.enrolled')["data"]["timestamp"]) + curr_mod * 7 * MS_IN_DAY
+    for x in modules[ret["correct module"]]:
+        schedule = list(act_df[act_df["name"] == x[0]]["schedule"])[0][0]
+        if schedule["repeat_interval"] != x[1]:
+            repeat.append(x[0])
+        start_time = int(datetime.datetime.fromisoformat(schedule["start_date"][:-1]).timestamp() * 1000)
+        if not (day0 + MS_IN_DAY * x[2] <= start_time <= day0 + MS_IN_DAY * x[2] + 1):
+            offset = int(day0 + MS_IN_DAY * x[2] - start_time)
+            offset_arr.append({"name": x[0], "time": offset / MS_IN_DAY})
+    ret["wrong repeat intervals"] = repeat
+    ret["wrong times"] = offset_arr
+    return ret

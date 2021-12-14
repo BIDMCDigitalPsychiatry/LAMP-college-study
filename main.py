@@ -761,7 +761,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
             elif len(delivered_gift_codes) == 1 and len([event for event in weekly_scores if enrolled_timestamp + ((PAYMENT_1_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY) <= event[0] <= enrolled_timestamp + ((PAYMENT_2_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_2_DAYS:
                 if payment_auth_complete['payment_authorization_1'] == 0:
                     slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} did not complete required payment authorization 1. Witholding payment 2")
-                    push(f"mailto:{email_address}", f"Payment Authorization Missing\nYour payment authorization form is not uploaded for payment #1. Please complete and upload the form so that you can be compensated for your study participation.")
+                    push(f"mailto:{email_address}", f"Payment Authorization Missing\nYour payment authorization form is not uploaded for payment #1. Please complete and upload the form: {payment_auth['payment_authorization_1']} so that you can be compensated for your study participation.")
                     unenrollment_update(participant_id, 'redcap_payment_auth')
                 else:
                     payout_amount = "$15"
@@ -770,7 +770,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
             elif len(delivered_gift_codes) == 2 and len([event for event in weekly_scores if enrolled_timestamp + ((PAYMENT_2_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY) <= event[0] <= enrolled_timestamp + ((PAYMENT_3_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_3_DAYS:
                 if payment_auth_complete['payment_authorization_2'] == 0:
                     slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} did not complete required payment authorization 2. Witholding payment 3")
-                    push(f"mailto:{email_address}", f"Payment Authorization Missing\nYour payment authorization form is not uploaded for payment #2. Please complete and upload the form so that you can be compensated for your study participation.")
+                    push(f"mailto:{email_address}", f"Payment Authorization Missing\nYour payment authorization form is not uploaded for payment #2. Please complete and upload the form: {payment_auth['payment_authorization_2']} so that you can be compensated for your study participation.")
                     unenrollment_update(participant_id, 'redcap_payment_auth')
                 else:
                     payout_amount = "$20"
@@ -779,7 +779,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
             elif len(delivered_gift_codes) == 3:
                 if payment_auth_complete['payment_authorization_3'] == 0:
                     slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} did not complete required payment authorization 3.")
-                    push(f"mailto:{email_address}", f"Payment Authorization Missing\nYour payment authorization form is not uploaded for payment #3. Please complete and upload the form to successfully complete your participation in the study.")
+                    push(f"mailto:{email_address}", f"Payment Authorization Missing\nYour payment authorization form is not uploaded for payment #3. Please complete and upload the form: {payment_auth['payment_authorization_3']} to successfully complete your participation in the study.")
                     unenrollment_update(participant_id, 'redcap_payment_auth')
 
             else:
@@ -871,12 +871,17 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
         last_scheduled = 0
 
     if int(time.time() * 1000) - last_scheduled >= MS_IN_A_DAY:
-        if week_index <= len(ACTIVITY_SCHEDULE) - 1: 
-            #schedule new module if at beginning of week 
-            if week_index * 7 <= days_since_start_enrollment <= (week_index * 7) + 1.0:
-                module_to_schedule = ACTIVITY_SCHEDULE[week_index]
-                module_scheduler.schedule_module_batch(participant_id, study_id, module_to_schedule, start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(19, 0)).timestamp() * 1000))
-                module_scheduler.unschedule_other_surveys(participant_id, keep_these=['Morning Daily Survey', 'Weekly Survey',] + ACTIVITY_SCHEDULE_MAP[module_to_schedule])
+        if week_index <= len(ACTIVITY_SCHEDULE) - 1:
+            # schedule module if it is wrong
+            mod = module_scheduler.get_curr_module(p)
+            if mod["wrong module"] == 1:
+                module_scheduler.schedule_module_batch(participant_id, study_id, mod["correct module"], start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(19, 0)).timestamp() * 1000))
+                module_scheduler.unschedule_other_surveys(participant_id, keep_these=['Morning Daily Survey', 'Weekly Survey',] + ACTIVITY_SCHEDULE_MAP[mod["correct module"]])
+            #schedule new module if at beginning of week
+            #if week_index * 7 <= days_since_start_enrollment <= (week_index * 7) + 1.0:
+            #    module_to_schedule = ACTIVITY_SCHEDULE[week_index]
+            #    module_scheduler.schedule_module_batch(participant_id, study_id, module_to_schedule, start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(19, 0)).timestamp() * 1000))
+            #    module_scheduler.unschedule_other_surveys(participant_id, keep_these=['Morning Daily Survey', 'Weekly Survey',] + ACTIVITY_SCHEDULE_MAP[module_to_schedule])
         else:
             module_scheduler.unschedule_other_surveys(participant_id, keep_these=[])
 
