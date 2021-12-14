@@ -902,6 +902,10 @@ def exit_worker(participant_id, study_id, days_since_start_enrollment):
     if enrolled_status != 'completed':
         LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_2.enrolled', {'status':'completed', 'timestamp':int(time.time()*1000)})
 
+    #Send email for Luke's study
+    email_address = LAMP.Type.get_attachment(participant_id, 'lamp.name')['data']
+    push(f"mailto:{email_address}", f"End of LAMP Study\nThank you for your participation in the study! For an addtional $25 you can complete a brief 20 minute interview regarding the study. If interested, please contact Luke Scheuer (lscheuer@bidmc.harvard.edu).")
+
 
 # The Automations worker listens to changes in the study's patient data and triggers interventions.
 def automations_worker():
