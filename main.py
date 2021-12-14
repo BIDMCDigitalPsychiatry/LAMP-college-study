@@ -837,7 +837,8 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
 
     #Exit worker
     if days_since_start_enrollment >= ENROLLMENT_DAYS:
-        exit_worker(participant_id, study_id, days_since_start_enrollment)
+        slack(f'Participant {participant_id} ready to be moved to exit worker (day since start enrollment = {days_since_start_enrollment})')
+        #exit_worker(participant_id, study_id, days_since_start_enrollment)
 
     act_dict = all_activities 
 
