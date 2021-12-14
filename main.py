@@ -476,7 +476,7 @@ def index(path):
             module_scheduler.schedule_module(participant_id, 'trial_period', start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(19, 0)).timestamp() * 1000))
             
             # set enrollment tag
-            LAMP.Type.set_attachment(participant_id, RESEARCHER_ID, 'org.digitalpsych.college_study_2.enrolled', {'status':'trial', 'timestamp':int(time.time()*1000)}) 
+            LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_2.enrolled', {'status':'trial', 'timestamp':int(time.time()*1000)}) 
         
             log.info(f"Configured Participant ID {participant_id} with a generated login credential using {request_email}.")
 
@@ -665,7 +665,7 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
         # change to enroll by scheduling morning daily/weekly survey running enrolled worker
         module_scheduler.schedule_module(participant_id, 'Morning Daily Survey', start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(16, 0)).timestamp() * 1000))
         module_scheduler.schedule_module(participant_id, 'Weekly Survey', start_time=int(datetime.datetime.combine((datetime.datetime.now() + datetime.timedelta(days=7)).date(), datetime.time(23, 30)).timestamp() * 1000))
-        LAMP.Type.set_attachment(participant_id, RESEARCHER_ID, 'org.digitalpsych.college_study_2.enrolled', {'status':'enrolled', 'timestamp':int(time.time()*1000)})
+        LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_2.enrolled', {'status':'enrolled', 'timestamp':int(time.time()*1000)})
         enrollment_worker(participant_id, study_id, days_since_start_enrollment=0)
 
 
@@ -798,18 +798,19 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
                     participant_code = gift_codes[payout_amount].pop()
 
                     ## Temporarily remove sending codes to people ###
-                    push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing your weekly activities! Here's your Amazon Gift Card Code: [{participant_code}]. Please ensure you fill out a payment form ASAP: {payment_auth_link}")
+                    #push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing your weekly activities! Here's your Amazon Gift Card Code: [{participant_code}]. Please ensure you fill out a payment form ASAP: {payment_auth_link}")
                     ##
 
-                    log.info(f"Delivered gift card code {participant_code} to the Participant {participant_id} via email.")
-                    slack(f"Delivered gift card code {participant_code} to the Participant {participant_id} via email at {email_address}.")
+                    log.info(f"Gift card code {participant_code} popped to send to Participant {participant_id}.")
+                    #slack(f"Delivered gift card code {participant_code} to the Participant {participant_id} via email at {email_address}.")
+                    slack(f"Gift card code {participant_code} popped to send to Participant {participant_id} via email at {email_address}.")
 
                     # Mark the gift card code as claimed by a participant and remove it from the study registry.
                     if DEBUG_MODE:
                         log.debug(pformat(delivered_gift_codes + [participant_code]))
                     else:
                         LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_2.gift_codes', gift_codes)
-                        LAMP.Type.set_attachment(participant_id, RESEARCHER_ID, 'org.digitalpsych.college_study_2.delivered_gift_codes', delivered_gift_codes + [participant_code])
+                        LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_2.delivered_gift_codes', delivered_gift_codes + [participant_code])
 
                         ### Temporarily check to see if delivered gift codes has been properly updates
                         delivered_gift_codes_updated = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_2.delivered_gift_codes')['data']
@@ -878,7 +879,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
         else:
             module_scheduler.unschedule_other_surveys(participant_id, keep_these=[])
 
-        LAMP.Type.set_attachment(participant_id, RESEARCHER_ID, 'org.digitalpsych.college_study_2.last_scheduled', {'timestamp':int(time.time()*1000)})
+        LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_2.last_scheduled', {'timestamp':int(time.time()*1000)})
 
     elif int(time.time() * 1000) - last_scheduled >= MS_IN_A_DAY * 7:
         slack(f"[SCHEDULING ISSUE]\n New module scheduliung has not occurred in over a week.")
@@ -893,7 +894,7 @@ def exit_worker(participant_id, study_id, days_since_start_enrollment):
     enrolled_status, enrolled_timestamp = enrolled['status'], enrolled['timestamp']
 
     if enrolled_status != 'completed':
-        LAMP.Type.set_attachment(participant_id, RESEARCHER_ID, 'org.digitalpsych.college_study_2.enrolled', {'status':'completed', 'timestamp':int(time.time()*1000)})
+        LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_2.enrolled', {'status':'completed', 'timestamp':int(time.time()*1000)})
 
 
 # The Automations worker listens to changes in the study's patient data and triggers interventions.
