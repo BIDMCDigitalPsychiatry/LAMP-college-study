@@ -3,6 +3,7 @@ import pandas as pd
 import datetime 
 import random
 import time
+import math 
 
 MS_IN_DAY = 86400000
 message_text = {
