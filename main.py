@@ -476,7 +476,7 @@ def index(path):
             module_scheduler.schedule_module(participant_id, 'trial_period', start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(19, 0)).timestamp() * 1000))
             
             # set enrollment tag
-            LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_2.enrolled', {'status':'trial', 'timestamp':int(time.time()*1000)}) 
+            LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_2.phases', {'status':'trial', 'phases':{'trial':int(time.time()*1000)}})
         
             log.info(f"Configured Participant ID {participant_id} with a generated login credential using {request_email}.")
 
@@ -665,7 +665,11 @@ def trial_worker(participant_id, study_id, days_since_start_trial):
         # change to enroll by scheduling morning daily/weekly survey running enrolled worker
         module_scheduler.schedule_module(participant_id, 'Morning Daily Survey', start_time=int(datetime.datetime.combine(datetime.datetime.now().date(), datetime.time(16, 0)).timestamp() * 1000))
         module_scheduler.schedule_module(participant_id, 'Weekly Survey', start_time=int(datetime.datetime.combine((datetime.datetime.now() + datetime.timedelta(days=7)).date(), datetime.time(23, 30)).timestamp() * 1000))
-        LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_2.enrolled', {'status':'enrolled', 'timestamp':int(time.time()*1000)})
+
+        phases = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_2.phases')['data']
+        phases['phases']['enrolled'] = int(time.time()*1000)
+        phases['status'] = 'enrolled'
+        LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_2.phases', phases)
         enrollment_worker(participant_id, study_id, days_since_start_enrollment=0)
 
 
@@ -676,8 +680,9 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
     # NOTE: For this survey only question #9 (PHQ-9 suicide, slice 8:9) is considered as part of the score.
 
     #Get enrollment status, timestamp
-    enrolled = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_2.enrolled')['data']#['status']
-    enrolled_status, enrolled_timestamp = enrolled['status'], enrolled['timestamp']
+    phases = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_2.phases')['data']
+    phase_status = phases['status']
+    phases_timestamp = phases['phases']['enrolled']
 
     # If entering into enrollment, schedule weekly, daily survey consistently
     data = LAMP.ActivityEvent.all_by_participant(participant_id)['data']
@@ -754,11 +759,11 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
 
         if payment_auth != None and payment_auth_complete != None:
             payout_amount = None
-            if len(delivered_gift_codes) == 0 and len([event for event in weekly_scores if enrolled_timestamp <= event[0] <= enrolled_timestamp + ((PAYMENT_1_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_1_DAYS:
+            if len(delivered_gift_codes) == 0 and len([event for event in weekly_scores if phase_timestamp <= event[0] <= phase_timestamp + ((PAYMENT_1_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_1_DAYS:
                 payout_amount = "$15"
                 payment_auth_link = payment_auth['payment_authorization_1']
 
-            elif len(delivered_gift_codes) == 1 and len([event for event in weekly_scores if enrolled_timestamp + ((PAYMENT_1_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY) <= event[0] <= enrolled_timestamp + ((PAYMENT_2_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_2_DAYS:
+            elif len(delivered_gift_codes) == 1 and len([event for event in weekly_scores if phase_timestamp + ((PAYMENT_1_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY) <= event[0] <= phase_timestamp + ((PAYMENT_2_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_2_DAYS:
                 if payment_auth_complete['payment_authorization_1'] == 0:
                     slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} did not complete required payment authorization 1. Witholding payment 2")
                     push(f"mailto:{email_address}", f"Payment Authorization Missing\nYour payment authorization form is not uploaded for payment #1. Please complete and upload the form: {payment_auth['payment_authorization_1']} so that you can be compensated for your study participation.")
@@ -767,7 +772,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
                     payout_amount = "$15"
                     payment_auth_link = payment_auth['payment_authorization_2']
 
-            elif len(delivered_gift_codes) == 2 and len([event for event in weekly_scores if enrolled_timestamp + ((PAYMENT_2_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY) <= event[0] <= enrolled_timestamp + ((PAYMENT_3_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_3_DAYS:
+            elif len(delivered_gift_codes) == 2 and len([event for event in weekly_scores if phase_timestamp + ((PAYMENT_2_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY) <= event[0] <= phase_timestamp + ((PAYMENT_3_DAYS + PAYMENT_LENIENCY_DAYS) * MS_IN_A_DAY)]) >= 1 and days_since_start_enrollment >= PAYMENT_3_DAYS:
                 if payment_auth_complete['payment_authorization_2'] == 0:
                     slack(f"[PAYMENT AUTHORIZATION] Participant {participant_id} did not complete required payment authorization 2. Witholding payment 3")
                     push(f"mailto:{email_address}", f"Payment Authorization Missing\nYour payment authorization form is not uploaded for payment #2. Please complete and upload the form: {payment_auth['payment_authorization_2']} so that you can be compensated for your study participation.")
@@ -896,15 +901,19 @@ def exit_worker(participant_id, study_id, days_since_start_enrollment):
     module_scheduler.unschedule_other_surveys(participant_id, keep_these=[])
     #TODO Kill sensor collection
     LAMP.Sensor.create(study_id, {'spec':'lamp.none', 'name':'exit_sensor', 'settings':{}})
-    enrolled = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_2.enrolled')['data']#['status']
-    enrolled_status, enrolled_timestamp = enrolled['status'], enrolled['timestamp']
+    phases = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_2.phases')['data']
+    phase_status = phase['status']
+    phase_timestamp = phase['phases'][phase_status]
 
-    if enrolled_status != 'completed':
-        LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_2.enrolled', {'status':'completed', 'timestamp':int(time.time()*1000)})
+    if phase_status != 'completed':
+        phases['phases']['completed'] = int(time.time()*1000)
+        phases['status'] = 'completed'
+        LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_2.phases', phases)
 
     #Send email for Luke's study
+    payment_auth = LAMP.Type.get_attachment(participant_id, REDCAP_SURVEY_ATTACH)['data']
     email_address = LAMP.Type.get_attachment(participant_id, 'lamp.name')['data']
-    push(f"mailto:{email_address}", f"End of LAMP Study\nThank you for your participation in the study! For an addtional $25 you can complete a brief 20 minute interview regarding the study. If interested, please contact Luke Scheuer (lscheuer@bidmc.harvard.edu).")
+    push(f"mailto:{email_address}", f"End of LAMP Study\nThank you for your participation in the study! For an addtional $25 you can complete a brief 20 minute interview regarding the study. If interested, please contact Luke Scheuer (lscheuer@bidmc.harvard.edu). Lastly, please complete the usability survey on REDCAP: {payment_auth['system_usability_scale']}")
 
 
 # The Automations worker listens to changes in the study's patient data and triggers interventions.
@@ -939,10 +948,10 @@ def automations_worker():
 
             #Check if participant is valid via redcap activities
             try:
-                enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled')['data']
+                phases = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.phases')['data']
                 redcap_status = redcap.check_participant_redcap(request_email)
-                if enrolled['status'] == 'trial':
-                    if int(time.time() * 1000) - enrolled['timestamp'] < 24 * 60 * 60 * 1000:
+                if phases['status'] == 'trial':
+                    if int(time.time() * 1000) - phases['phases']['trial'] < 24 * 60 * 60 * 1000:
                         pass
                     elif int(redcap_status) <= 0: #then discontinue and unenroll                    
                         unenrollment_update(participant['id'], 'redcap_consent')
@@ -955,7 +964,7 @@ def automations_worker():
                         #     pass 
                         # continue
 
-                    elif 24 * 60 * 60 * 1000 <= int(time.time() * 1000) - enrolled['timestamp'] <= 48 * 60 * 60 * 1000:
+                    elif 24 * 60 * 60 * 1000 <= int(time.time() * 1000) - phases['phases']['trial'] <= 48 * 60 * 60 * 1000:
                         new_user_update(participant['id'])
                     
             except Exception as e:
@@ -967,29 +976,31 @@ def automations_worker():
 
             #Check to see if enrolled tag exists
             try:
-                enrolled_status, enrolled_timestamp = enrolled['status'], enrolled['timestamp']
-                if enrolled_status == 'completed':
+                phase_status = phases['status'] 
+                phase_timestamp = phases['phases'][phase_status]
+                if phase_status == 'completed':
                     continue
-                if enrolled_status != 'trial' and enrolled_status != 'enrolled':
+                if phase_status != 'trial' and phase_status != 'enrolled':
                     log.info(f"Participant \"{participant['id']}\" has an invalid enrollment tag. Please see.")
                     continue
 
             except LAMP.exceptions.ApiException:
                 if days_since_start > 3:
                     log.info(f"WARNING: Participant \"{participant['id']}\" has been participating past the trial period, yet does not have an enrolled tag.")
-                #Make enrolled tag 
-                LAMP.Type.set_attachment(participant['id'], RESEARCHER_ID, 'org.digitalpsych.college_study_2.enrolled', {'status':'trial', 'timestamp':int(time.time()*1000)}) 
-                enrolled = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.enrolled')['data']#['status']
-                enrolled_status, enrolled_timestamp = enrolled['status'], enrolled['timestamp']
+                #Make phases tag 
+                LAMP.Type.set_attachment(RESEARCHER_ID, participant['id'], 'org.digitalpsych.college_study_2.phases', {'status':'trial', 'phases':{'trial':int(time.time()*1000)}})
+                phases = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_2.phases')['data']
+                phase_status = phases['status'] 
+                phase_timestamp = phases['phases'][phase_status]
 
-            if enrolled_status == 'trial':
+            if phase_status == 'trial':
                 #Check for elapsed time of account to see in trial period or not
                 #Use activity events,
-                days_since_start_trial = (int(time.time() * 1000) - enrolled_timestamp) / (24 * 60 * 60 * 1000)
+                days_since_start_trial = (int(time.time() * 1000) - phase_timestamp) / (24 * 60 * 60 * 1000)
                 trial_worker(participant['id'], study['id'], days_since_start_trial)
 
-            elif enrolled_status == 'enrolled':
-                days_since_start_enrollment = (int(time.time() * 1000) - enrolled_timestamp) / (24 * 60 * 60 * 1000)
+            elif phase_status == 'enrolled':
+                days_since_start_enrollment = (int(time.time() * 1000) - phase_timestamp) / (24 * 60 * 60 * 1000)
                 enrollment_worker(participant['id'], study['id'], days_since_start_enrollment)
 
             else:
@@ -1002,5 +1013,5 @@ def automations_worker():
 
 # Driver code to accept HTTP requests and run the automations worker on repeat.
 if __name__ == '__main__':
-    RepeatTimer(3*60*60, automations_worker).start() # loop: every3h
+    RepeatTimer(24*60*60, automations_worker).start() # loop: every3h
     app.run(host='0.0.0.0', port=3000, debug=False)
