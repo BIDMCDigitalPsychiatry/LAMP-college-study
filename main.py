@@ -682,7 +682,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
     #Get enrollment status, timestamp
     phases = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_2.phases')['data']
     phase_status = phases['status']
-    phases_timestamp = phases['phases']['enrolled']
+    phase_timestamp = phases['phases']['enrolled']
 
     # If entering into enrollment, schedule weekly, daily survey consistently
     data = LAMP.ActivityEvent.all_by_participant(participant_id)['data']
@@ -1013,5 +1013,5 @@ def automations_worker():
 
 # Driver code to accept HTTP requests and run the automations worker on repeat.
 if __name__ == '__main__':
-    RepeatTimer(24*60*60, automations_worker).start() # loop: every3h
+    RepeatTimer(24*60*60, automations_worker).start() # loop: every24h
     app.run(host='0.0.0.0', port=3000, debug=False)
