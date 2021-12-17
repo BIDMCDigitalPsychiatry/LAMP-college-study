@@ -803,7 +803,7 @@ def enrollment_worker(participant_id, study_id, days_since_start_enrollment):
                     participant_code = gift_codes[payout_amount].pop()
 
                     ## Temporarily remove sending codes to people ###
-                    #push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing your weekly activities! Here's your Amazon Gift Card Code: [{participant_code}]. Please ensure you fill out a payment form ASAP: {payment_auth_link}")
+                    push(f"mailto:{email_address}", f"Your mindLAMP Progress.\nThanks for completing your weekly activities! Here's your Amazon Gift Card Code: [{participant_code}]. Please ensure you fill out a payment form ASAP: {payment_auth_link}")
                     ##
 
                     log.info(f"Gift card code {participant_code} popped to send to Participant {participant_id}.")
@@ -913,7 +913,7 @@ def exit_worker(participant_id, study_id, days_since_start_enrollment):
     #Send email for Luke's study
     payment_auth = LAMP.Type.get_attachment(participant_id, REDCAP_SURVEY_ATTACH)['data']
     email_address = LAMP.Type.get_attachment(participant_id, 'lamp.name')['data']
-    push(f"mailto:{email_address}", f"End of LAMP Study\nThank you for your participation in the study! For an addtional $25 you can complete a brief 20 minute interview regarding the study. If interested, please contact Luke Scheuer (lscheuer@bidmc.harvard.edu). Lastly, please complete the usability survey on REDCAP: {payment_auth['system_usability_scale']}")
+    #push(f"mailto:{email_address}", f"End of LAMP Study\nThank you for your participation in the study! For an addtional $25 you can complete a brief 20 minute interview regarding the study. If interested, please contact Luke Scheuer (lscheuer@bidmc.harvard.edu). Lastly, please complete the usability survey on REDCAP: {payment_auth['system_usability_scale']}")
 
 
 # The Automations worker listens to changes in the study's patient data and triggers interventions.
