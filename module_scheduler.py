@@ -493,7 +493,12 @@ def get_curr_module(part_id):
                   ["Distraction Games Day 7", "none", 6],],
     }
     # Figure out what module they are supposed to be on
-    curr_df = int(time.time() * 1000) - LAMP.Type.get_attachment(part_id, 'org.digitalpsych.college_study_2.enrolled')["data"]["timestamp"]
+    phase = LAMP.Type.get_attachment(part_id, 'org.digitalpsych.college_study_2.phases')["data"]
+    if phase["status"] != 'enrolled':
+        ret["correct module"] = "Done"
+        return ret
+    phase_timestamp = phase['phases']['enrolled']
+    curr_df = int(time.time() * 1000) - phase_timestamp
     curr_time = math.floor(curr_df / MS_IN_DAY)
     curr_mod = math.floor(curr_time / 7)
     if curr_mod > 3:
@@ -529,7 +534,7 @@ def get_curr_module(part_id):
     # Check if the activity schedules are correct
     repeat = []
     offset_arr = []
-    day0 = int(LAMP.Type.get_attachment(part_id, 'org.digitalpsych.college_study_2.enrolled')["data"]["timestamp"]) + curr_mod * 7 * MS_IN_DAY
+    day0 = phase_timestamp + curr_mod * 7 * MS_IN_DAY
     for x in modules[ret["correct module"]]:
         schedule = list(act_df[act_df["name"] == x[0]]["schedule"])[0][0]
         if schedule["repeat_interval"] != x[1]:
