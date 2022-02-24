@@ -1,4 +1,4 @@
-name: Build College V2 image
+name: Build College V3 image
 on:
   push:
     branches: 
