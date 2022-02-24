@@ -148,8 +148,8 @@ def index(path):
     if request.path == '/' and (request.method == 'GET' or request.method == 'POST'):
 
         # Validate the submitted RedCap code and email address.
-        request_email = request.form.get('email')
-        request_code = request.form.get('code')
+        request_email = request.args.get('email')
+        request_code = request.args.get('code')
         if request_email is None or request_code != REDCAP_REQUEST_CODE:
             log.warning('Participant registration input parameters were invalid.')
             return html(f"<p>There was an error processing your request.</p>")
