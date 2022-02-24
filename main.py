@@ -173,7 +173,10 @@ def index(path):
 
             study_id = studies[0]['id']
             participant_id = LAMP.Participant.all_by_study(study_id)['data'][0]['id']
-            LAMP.Type.set_attachment(participant_id, 'me', 'lamp.name', request_email)
+            log.info(f"setting lamp.name for {participant_id}")
+            LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'lamp.name', request_email)
+            name0 = LAMP.Type.get_attachment(participant_id, 'lamp.name')
+            log.info(f"setting lamp.name for {participant_id}, set as {name0}")
 
             # set enrollment tag
             LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_3.phases', {'status':'new_user', 'phases':{'new_user':int(time.time()*1000)}})
