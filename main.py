@@ -145,7 +145,7 @@ def index(path):
             </form>")
     """
     # Create a Participant with a matching Credential in a random Study.
-    elif request.path == '/' and (request.method == 'GET' or request.method == 'POST'):
+    if request.path == '/' and (request.method == 'GET' or request.method == 'POST'):
 
         # Validate the submitted RedCap code and email address.
         request_email = request.form.get('email')
