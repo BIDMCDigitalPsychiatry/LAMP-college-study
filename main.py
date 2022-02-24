@@ -180,7 +180,14 @@ def index(path):
 
             # set enrollment tag
             LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_3.phases', {'status':'new_user', 'phases':{'new_user':int(time.time()*1000)}})
-
+            # Schedule College Study FAQs
+            log.info("scheduling college study faqs")
+            module_json = "v3_modules.json"
+            f = open(MODULE_JSON)
+            module_json = json.load(f)
+            f.close()
+            module_scheduler.schedule_module(participant_id, "new_user", module_scheduler.set_start_date(time.time() * 1000), module_json)
+            log.info("scheduled.")
             log.info(f"Configured Participant ID {participant_id} with a generated login credential using {request_email}.")
 
         except:
