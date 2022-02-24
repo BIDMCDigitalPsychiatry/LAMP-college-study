@@ -133,25 +133,14 @@ def slack(text):
 @app.route('/', methods=['GET', 'POST'], defaults={'path': ''})
 @app.route('/<path:path>', methods=['GET', 'POST'])
 def index(path):
-
-    # Display a simple form with a code and email input.
-    """
-    if request.path == '/' and request.method == 'GET':
-        return html(f"<p>To continue, please enter your unique RedCap Survey Code and the <b>Student Email Address</b> that you used in that survey <b>(must be in lower-case and ending in ".edu")</b>. If you do not use your student email address issued by your school, an account will not be created or your accout will be flagged for failure to complete Redcap. <b><a href="https://redcap.bidmc.harvard.edu/redcap/surveys/?s=8HMTYWNPD9">If you have not taken the onboarding survey, please tap here to begin.</a></b></p>
-            <form action="/" method="post">
-                <label for="email">Email Address:</label><input type="email" id="email" name="email" required>
-                <label for="code">RedCap Code:</label><input type="text" id="code" name="code" required>
-                <input type="submit" value="Continue">
-            </form>")
-    """
     # Create a Participant with a matching Credential in a random Study.
-    if request.path == '/' and (request.method == 'GET' or request.method == 'POST'):
+    if request.path == '/' and request.method == 'GET':
 
         # Validate the submitted RedCap code and email address.
         request_email = request.args.get('email')
         request_code = request.args.get('code')
         if request_email is None or request_code != REDCAP_REQUEST_CODE:
-            log.warning('Participant registration input parameters were invalid.')
+            log.warning('Participant registration input parameters were invalid. Please contact collegestudy@bidmc.harvard.edu for assistance.')
             return html(f"<p>There was an error processing your request.</p>")
 
         # Require a dot EDU domain and exclude the fake "@students.edu" to prevent spamming.
@@ -166,7 +155,7 @@ def index(path):
             log.warning(f"Email address {request_email} was already in use; aborting registration.")
             return html(f"""<p>You've already signed up for this study.</p>
             <form action="mailto:{SUPPORT_EMAIL}"> 
-                <input type="submit" value="Contact the Research Study Coordinator for support">
+                <input type="submit" value="Contact the Research Team (collegestudy@bidmc.harvard.edu) for support">
             </form>""")
 
         # Select a random Study and create a new Participant and assign name and Credential.
@@ -211,7 +200,7 @@ def index(path):
 
     # Unsupported HTTP Method, Path, or a similar 404.
     else:
-        return html(f"<p>There was an error processing your request.</p>")
+        return html(f"<p>There was an error processing your request. Please contact collegestudy@bidmc.harvard.edu if the issue persists.</p>")
 
 # Driver code to accept HTTP requests.
 if __name__ == '__main__':
