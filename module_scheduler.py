@@ -1,56 +1,17 @@
+
+import sys
+sys.path.insert(1, "/home/danielle/LAMP-py")
 import LAMP
 import pandas as pd
-import datetime 
+import datetime
 import random
 import time
-import math 
+import math
+import random
 
 MS_IN_DAY = 86400000
-message_text = {
-                   "thought_patterns_beginner": "Hi! This week you have been assigned the 'thought patterns'" +
-                                             " module. If you click on the Day 1 survey group you’ll be taken to a 'Learn Tip'" +
-                                             " called Identifying Thought Patterns. You’ll see there are" +
-                                             " 2 sections. The first has a video that is an overview of what 'automatic " +
-                                             "thoughts' are and explains an exercise that can help you work through them." +
-                                             " The second section has a list of 3 common thought patterns and examples. " +
-                                             "You should get notified once a day to try " +
-                                             "the activity mentioned in the video called 'Record, Rationalize, Replace.'" +
-                                             " You'll always be asked to do a short Check-in survey afterwards. " +
-                                             "Please don't hesitate to reach out with any questions.",
-                   "mindfulness_beginner": "Hi! This week, you have been assigned the 'mindfulness' module. If you" +
-                                             " click on the Day 1 activity there’s a Learn Tip about mindfulness. In the first" +
-                                             " section there’s a video about mindfulness that is an explanation of what " +
-                                             "mindfulness is. You can also look at the other information about " +
-                                             "mindfulness in the Learn tip. After today, you will get notification about" +
-                                             " a mindfulness activity early in the day. These are always the same 1-minute audio. " +
-                                             "Every evening there is another mindfulness activity. Some of these may be" +
-                                             " longer than others. Then, as always, there" +
-                                             " will be a short Check-in survey. Please reach out if you have any questions!",
-                   "games": "This week's module focuses on cognitive enhancement therapy. There are 2 'brain games' that" +
-                                             " you'll be assigned to play throughout the week. Although there are" +
-                                             " instructions on each game when you open it, you can always come back" +
-                                             " to this message to read the more detailed instructions. The first" +
-                                             " game is called Jewels. How it works is that when you open the game" +
-                                             " and click 'begin' there will be a screen full of shapes with" +
-                                             " numbers inside of them. At the bottom of the screen, it will" +
-                                             " show you a certain shape with the number 1 inside of it. You should" +
-                                             " find that jewel on the screen and click it. Then, it will show you" +
-                                             " a jewel of the second shape with the number 1 on it, and you'll click" +
-                                             " that one. You'll repeat this pattern for all of the jewels. The second" +
-                                             " game is called 'Spatial Span'. For this one, you will see a grid" +
-                                             " of boxes. Boxes will light up in a certain order. Remember that" +
-                                             " order and then tap those same boxes in **REVERSE ORDER** from how" +
-                                             " they appeared. Each level will have more boxes in lit up in the" +
-                                             " sequence. See how far you can get! As always, there's a little" +
-                                             " Check-in survey after the activity.",
-                   "journal": "This week's module centers around the journal. You'll get a notification to" +
-                                             " do the journal activity each day. It's essentially a free-write" +
-                                             " space. You can jot down anything about how you're feeling, or" +
-                                             " just use it reflect. The goal is to spend some time each day" +
-                                             " reflecting on your thoughts, activities, and moods. As always," +
-                                             " there will be a Check-in survey.",}
 
-def schedule_module(part_id, module_name, start_time):
+def schedule_module(part_id, module_name, start_time, module_json):
     """ Schedule a module.
 
         Args:
@@ -58,146 +19,15 @@ def schedule_module(part_id, module_name, start_time):
             module_name: the name of the module
             start_time: the start time for the module
     """
-    MODULE_NAMES = ["behavioral_activation", "mindfulness_beginner", "thought_patterns_beginner",
-                    "thought_patterns_advanced", "journal", "strengths", "gratitude_journal",
-                    "games", "mindfulness_advanced", 'trial_period', 
-                    "Morning Daily Survey", "Weekly Survey"]
-
-    if module_name not in MODULE_NAMES:
+    if module_name not in module_json:
         print(module_name + " is not in the list of modules. " + part_id + " has not been scheduled.")
         return
-    if module_name == "behavioral_activation":
-        sucess = _schedule_module_helper(part_id,
-                                ["Behavioral Activation", "Behavioral Activation Activity",
-                                 "Behavioral Activation Daily Survey"],
-                                ["none", "daily", "daily"],
-                                [start_time - 60 * 1000, start_time, start_time + 60 * 1000])
-
-    elif module_name == 'trial_period':
-        sucess = _schedule_module_helper(part_id,
-                                ["Trial Period Day 1",
-                                 "Trial Period Day 2",
-                                 "Trial Period Day 3"],
-                                 ["none", "none", "none"],
-                                 [start_time, 
-                                  start_time + 1 * MS_IN_DAY, 
-                                  start_time + 2 * MS_IN_DAY,])
-
-    elif module_name == "mindfulness_beginner":
-        sucess = _schedule_module_helper(part_id,
-                                ["Mindfulness",
-                                 "Mindfulness Daily Survey",
-                                 "Morning 1-Minute Mindfulness",
-                                 "Day 1 : 5-4-3-2-1 Grounding Technique",
-                                 "Day 2 - Breathe with your Body",
-                                 "Day 3 - Breathing Exercise (Long)",
-                                 "Day 4 - 3 Minute Mindfulness Breathing",
-                                 "Day 5 - 5 Minute Self-Compassion Mindfulness",
-                                 "Day 6 - 6 minute mindfulness"],
-                                ["none", "daily", "daily", "none", "none", "none", "none", "none", "none"],
-                                [start_time - 60 * 1000,
-                                 start_time + 60 * 1000,
-                                 start_time + MS_IN_DAY - 10 * 3600 * 1000,
-                                 start_time,
-                                 start_time + MS_IN_DAY,
-                                 start_time + 2 * MS_IN_DAY,
-                                 start_time + 3 * MS_IN_DAY,
-                                 start_time + 4 * MS_IN_DAY,
-                                 start_time + 5 * MS_IN_DAY,
-                                ])
-    elif module_name == "thought_patterns_beginner":
-        sucess = _schedule_module_helper(part_id,
-                                ["Identifying Thought Patterns", "Record, Rationalize, Replace",
-                                 "Thought Patterns Daily Survey"],
-                                ["none", "daily", "daily"],
-                                [start_time - 60 * 1000, start_time, start_time + 60 * 1000])
-    elif module_name == "thought_patterns_advanced":
-        sucess = _schedule_module_helper(part_id,
-                                ["Thought Patterns (advanced)", "Record, Rationalize, Replace",
-                                 "Thought Patterns Daily Survey"],
-                                ["none", "daily", "daily"],
-                                [start_time - 60 * 1000, start_time, start_time + 60 * 1000])
-    elif module_name == "journal":
-        sucess = _schedule_module_helper(part_id,
-                                ["Journal!", "Journal Daily Survey"],
-                                ["daily", "daily"],
-                                [start_time, start_time + 60 * 1000])
-    elif module_name == "strengths":
-        sucess = _schedule_module_helper(part_id,
-                                ["Strengths", "Strengths Survey", "Strengths Evening Survey"],
-                                ["none", "daily", "daily"],
-                                [start_time - 10 * 3600 * 1000 - 60 * 1000, start_time - 10 * 3600 * 1000, start_time])
-    elif module_name == "gratitude_journal":
-        sucess = _schedule_module_helper(part_id,
-                                ["Gratitude", "Gratitude Daily Survey",
-                                 "Gratitude Journal Day 1",
-                                 "Gratitude Journal Day 2",
-                                 "Gratitude Journal Day 3",
-                                 "Gratitude Journal Day 4",
-                                 "Gratitude Journal Day 5",
-                                 "Gratitude Journal Day 6",
-                                 ],
-                                ["none", "daily", "none", "none", "none", "none", "none", "none",],
-                                [start_time - 60 * 1000, start_time + 60 * 1000,
-                                 start_time,
-                                 start_time + MS_IN_DAY,
-                                 start_time + 2 * MS_IN_DAY,
-                                 start_time + 3 * MS_IN_DAY,
-                                 start_time + 4 * MS_IN_DAY,
-                                 start_time + 5 * MS_IN_DAY,])
-    elif module_name == "games":
-        sucess = _schedule_module_helper(part_id,
-                                ["Distraction Game Daily Survey",
-                                 "Jewels Game",
-                                 "Spatial Span Game",
-                                 "Jewels Game",
-                                 "Spatial Span Game",
-                                 "Jewels Game",
-                                 "Spatial Span Game",
-                                 ],
-                                ["daily", "none", "none", "none", "none", "none", "none",],
-                                [start_time + 60 * 1000,
-                                 start_time,
-                                 start_time + MS_IN_DAY,
-                                 start_time + 2 * MS_IN_DAY,
-                                 start_time + 3 * MS_IN_DAY,
-                                 start_time + 4 * MS_IN_DAY,
-                                 start_time + 5 * MS_IN_DAY,])
-    elif module_name == "mindfulness_advanced":
-        sucess = _schedule_module_helper(part_id,
-                                ["Mindfulness",
-                                 "Mindfulness Daily Survey",
-                                 "Morning 4 Minute Mindfulness Body-Scan",
-                                 "Day 1 - 5-4-3-2-1 Grounding Technique",
-                                 "Day 2 - Breathe with your Body",
-                                 "Day 3 - Breathing Exercise (Long)",
-                                 "Day 4 - 3 Minute Mindfulness Breathing",
-                                 "Day 5 - 5 Minute Self-Compassion Mindfulness",
-                                 "Day 6 - 6 minute mindfulness"],
-                                ["none", "daily", "daily", "none", "none", "none", "none", "none", "none"],
-                                [start_time - 60 * 1000,
-                                 start_time + 60 * 1000,
-                                 start_time + MS_IN_DAY - 10 * 3600 * 1000,
-                                 start_time,
-                                 start_time + MS_IN_DAY,
-                                 start_time + 2 * MS_IN_DAY,
-                                 start_time + 3 * MS_IN_DAY,
-                                 start_time + 4 * MS_IN_DAY,
-                                 start_time + 5 * MS_IN_DAY,
-                                ])
-
-    elif module_name == "Morning Daily Survey":
-        sucess = _schedule_module_helper(part_id,
-                                    ["Morning Daily Survey",],
-                                    ["daily"],
-                                    [start_time])
-
-    elif module_name == "Weekly Survey":
-        sucess = _schedule_module_helper(part_id,
-                                    ["Weekly Survey",],
-                                    ["weekly"],
-                                    [start_time])
-    if sucess == 0 and module_name in message_text:
+    sucess = _schedule_module_helper(part_id,
+                                     module_json[module_name]["activities"],
+                                     module_json[module_name]["daily"],
+                                     [start_time + x for x in module_json[module_name]["times"]],
+                                     )
+    if sucess == 0 and module_json[module_name]["message"] != "":
         dt = datetime.datetime.fromtimestamp(start_time / 1000)
         dt_iso = dt.isoformat() + 'Z'
         message_data = {"data": []}
@@ -208,9 +38,9 @@ def schedule_module(part_id, module_name, start_time):
         message_data["data"].append({'from': 'researcher',
                                      'type': 'message',
                                      'date': dt_iso,
-                                     'text': message_text[module_name]})
+                                     'text': module_json[module_name]["message"]})
         LAMP.Type.set_attachment(part_id, "me", attachment_key = "lamp.messaging",body=message_data["data"])
-    else:
+    elif sucess != 0:
         print("At least one module was missing for " + part_id)
 
 
@@ -233,165 +63,16 @@ def _schedule_module_helper(part_id, act_names, daily_schedule, start_times):
             curr_dict = act_dict[ind]
             dt = datetime.datetime.fromtimestamp(start_times[k] / 1000)
             dt_iso = dt.isoformat() + 'Z'
-            curr_dict["schedule"] = [{
+            curr_dict["schedule"].append({
                 'start_date': dt_iso,
                 'time': dt_iso,
                 'custom_time': None,
                 'repeat_interval': daily_schedule[k],
-                'notification_ids': [random.randint(1,100000)]}]
+                'notification_ids': [random.randint(1,100000)]})
             try:
                 LAMP.Activity.update(activity_id=curr_dict['id'], activity_activity=curr_dict)
             except:
                 pass
-        return 0
-    else:
-        return -1
-
-
-def schedule_module_batch(part_id, study_id, module_name, start_time):
-    """ Schedule a module.
-
-        Args:
-            study_id: the study id
-            module_name: the name of the module
-            start_time: the start time for the module
-    """
-    MODULE_NAMES = ["mindfulness_beginner", "thought_patterns_beginner", "journal", "games"]
-    if module_name not in MODULE_NAMES:
-        print(module_name + " is not in the list of module names. " + part_id + ", " + study_id + " was not scheduled.")
-
-    if module_name == "mindfulness_beginner":
-        sucess = _schedule_module_helper_batch(part_id, study_id,
-                                {
-                                    "Mindfulness Day 1": ["Mindfulness",
-                                                          "Day 1 - 5-4-3-2-1 Grounding Technique",
-                                                          "Check-in Survey",],
-                                    "Mindfulness Day 2": ["Day 2 - Breathe with your Body",
-                                                          "Check-in Survey",],
-                                    "Mindfulness Day 3": ["Day 3 - Breathing Exercise (Long)",
-                                                          "Check-in Survey",],
-                                    "Mindfulness Day 4": ["Day 4 - 3 Minute Mindfulness Breathing",
-                                                          "Check-in Survey",],
-                                    "Mindfulness Day 5": ["Day 5 - 5 Minute Self-Compassion Mindfulness",
-                                                          "Check-in Survey",],
-                                    "Mindfulness Day 6": ["Day 6 - 6 minute mindfulness",
-                                                          "Check-in Survey",],
-                                },
-                                ["none", "none", "none", "none", "none", "none",],
-                                [start_time,
-                                 start_time + MS_IN_DAY,
-                                 start_time + 2 * MS_IN_DAY,
-                                 start_time + 3 * MS_IN_DAY,
-                                 start_time + 4 * MS_IN_DAY,
-                                 start_time + 5 * MS_IN_DAY,
-                                ])
-
-    elif module_name == "thought_patterns_beginner":
-        sucess = _schedule_module_helper_batch(part_id, study_id,
-                                {
-                                    "Thought Patterns Day 1": ["Identifying Thought Patterns",
-                                                               "Record, Rationalize, Replace",
-                                                               "Check-in Survey",],
-                                    "Thought Patterns Day 2-7": ["Record, Rationalize, Replace",
-                                                                 "Check-in Survey",],
-                                },
-                                ["none", "daily"],
-                                [start_time, start_time + MS_IN_DAY])
-    elif module_name == "journal":
-        sucess = _schedule_module_helper_batch(part_id, study_id,
-                                {
-                                    "Journal Day 1-7": ["Journal",
-                                                        "Check-in Survey"],
-                                },
-                                ["daily"],
-                                [start_time])
-
-    elif module_name == "games":
-        sucess = _schedule_module_helper_batch(part_id, study_id,
-                                {
-                                    "Distraction Games Day 1": ["Jewels Game",
-                                                                "Check-in Survey"],
-                                    "Distraction Games Day 2": ["Spatial Span Game",
-                                                                "Check-in Survey"],
-                                    "Distraction Games Day 3": ["Jewels Game",
-                                                                "Check-in Survey"],
-                                    "Distraction Games Day 4": ["Spatial Span Game",
-                                                                "Check-in Survey"],
-                                    "Distraction Games Day 5": ["Jewels Game",
-                                                                "Check-in Survey"],
-                                    "Distraction Games Day 6": ["Spatial Span Game",
-                                                                "Check-in Survey"],
-                                    "Distraction Games Day 7": ["Jewels Game",
-                                                                "Check-in Survey"],
-                                },
-                                ["none", "none", "none", "none", "none", "none", "none",],
-                                [start_time,
-                                 start_time + MS_IN_DAY,
-                                 start_time + 2 * MS_IN_DAY,
-                                 start_time + 3 * MS_IN_DAY,
-                                 start_time + 4 * MS_IN_DAY,
-                                 start_time + 5 * MS_IN_DAY,
-                                 start_time + 6 * MS_IN_DAY,])
-    if sucess == 0 and module_name in message_text:
-        dt = datetime.datetime.fromtimestamp(start_time / 1000)
-        dt_iso = dt.isoformat() + 'Z'
-        message_data = {"data": []}
-        try:
-            message_data = LAMP.Type.get_attachment(part_id, "lamp.messaging")
-        except:
-            print("No messages.")
-        message_data["data"].append({'from': 'researcher',
-                                     'type': 'message',
-                                     'date': dt_iso,
-                                     'text': message_text[module_name]})
-        LAMP.Type.set_attachment(part_id, "me", attachment_key = "lamp.messaging",body=message_data["data"])
-    else:
-        print("At least one module was missing for " + part_id)
-
-
-def _schedule_module_helper_batch(part_id, study_id, act_names, daily_schedule, start_times):
-    act_dict = LAMP.Activity.all_by_participant(part_id)["data"]
-    all_act = pd.DataFrame(act_dict)
-    all_act_names_list = []
-    for k in act_names.keys():
-        for x in act_names[k]:
-            all_act_names_list.append(x)
-
-    if _check_modules(act_dict, all_act_names_list) == 0:
-        for j, k in enumerate(act_names.keys()):
-            id_list = []
-            for i, act in enumerate(act_names[k]):
-                ind = list(all_act.index[all_act["name"] == act])[0]
-                curr_dict = act_dict[ind]
-                id_list.append(curr_dict['id'])
-            dt = datetime.datetime.fromtimestamp(start_times[j] / 1000)
-            dt_iso = dt.isoformat() + 'Z'
-            batch_dict = {
-                'spec': 'lamp.group',
-                'name': k,
-                'settings': id_list,
-                'schedule': [{
-                    'start_date': dt_iso,
-                    'time': dt_iso,
-                    'custom_time': None,
-                    'repeat_interval': daily_schedule[j],
-                    'notification_ids': [random.randint(1,100000)]
-                }]
-            }
-
-            #create if doesn't exist; else update
-            if k in all_act['name'].values:
-                ind = list(all_act.index[all_act["name"] == k])[0]
-                batch_curr_dict = all_act.iloc[ind].to_dict()
-                try:
-                    LAMP.Activity.update(activity_id=batch_curr_dict['id'], activity_activity=batch_dict)
-                except LAMP.exceptions.ApiTypeError:
-                    continue
-            else:
-                try:
-                    LAMP.Activity.create(study_id=study_id, activity_activity=batch_dict)
-                except LAMP.exceptions.ApiTypeError:
-                    continue
         return 0
     else:
         return -1
@@ -412,7 +93,8 @@ def _check_modules(act_dict, act_names):
             ret = -1
     return ret
 
-def unschedule_other_surveys(part_id, keep_these=["Morning Daily Survey", "Weekly Survey"]):
+def unschedule_other_surveys(part_id, keep_these=["Morning Daily Survey", "Weekly Survey",
+                                                  "Select Module 3", "Select Module 4"]):
     """ Delete schedules for all surveys except for keep_these.
     """
     act_dict = LAMP.Activity.all_by_participant(part_id)["data"]
@@ -421,128 +103,256 @@ def unschedule_other_surveys(part_id, keep_these=["Morning Daily Survey", "Weekl
         if len(act_dict[i]["schedule"]) > 0:
             if act_dict[i]["name"] not in keep_these:
                 act_dict[i]["schedule"] = []
-                try:
-                    LAMP.Activity.update(activity_id=act_dict[i]['id'], activity_activity=act_dict[i])
-                except:
-                    pass
+                LAMP.Activity.update(activity_id=act_dict[i]['id'], activity_activity=act_dict[i])
 
-
-def set_start_date(curr_time, thurs=1):
+def set_start_date(curr_time, shift=18):
     """ Function to convert the start / end times to the next
         Thursday at 6pm.
 
         Args:
-            curr_time: the end time in ms
+            curr_time: the time in ms (for the date)
+            shift: the time to shift start time to
         Returns:
-            new_latest_time: the new end time
+            the new timestamp (current date and shifted time)
     """
-    time_9am = datetime.time(22,0,0)
-    end_datetime = datetime.datetime.fromtimestamp(curr_time / 1000)
-    end_date = end_datetime.date()
-    if end_datetime.time() > time_9am:
-        end_date = end_date + datetime.timedelta(days=1)
-    end_datetime = datetime.datetime.combine(end_date, time_9am)
-    # weekday_goal = 3
-    # if not thurs:
-    #    weekday_goal = 1
-    # while end_datetime.weekday() != weekday_goal:
-    #    end_datetime = end_datetime + datetime.timedelta(days=1)
-    new_latest_time = int(end_datetime.timestamp() * 1000)
-    return new_latest_time
-  
-  
-def get_curr_module(part_id):
-    """ Check what module someone is scheduled for, verify that the schedule is correct.
+    time_shift = datetime.time(shift,0,0)
+    end_date = datetime.datetime.fromtimestamp(curr_time / 1000).date()
+    end_datetime = datetime.datetime.combine(end_date, time_shift)
+    return int(end_datetime.timestamp() * 1000)
+
+def correct_modules(part_id, module_json):
+    """ Check what module someone is scheduled for, verify that the schedule
+        is correct.
+
+        Participants will have a module list attached (modules) in the form:
+            [{
+                "module": "trial_period",
+                "phase": "trial",
+                "start_end": [0, 345600000],
+                "shift": 18
+             },
+             {
+                 "module": "daily_and_weekly",
+                 "phase": "enrolled",
+                 "start_end": [0, 2764800000],
+                 "shift": 18
+             },
+             {
+                 "module": "gratitude_journal",
+                 "period": "enrolled",
+                 "start_end": [0, 518400000],
+                 "shift": 18
+             },
+             {
+                 "module": "games",
+                 "period": "enrolled",
+                 "start_end": [518400000, 1123200000],
+                 "shift": 18
+             }]
 
         Args:
             part_id: the participant id
+            module_json: json with module specs
         Returns:
             A dictionary in the form:
-            {"correct module": correct module,
-             "current module": [current module/s],
-             "wrong module": 1 or 0,
-             "wrong repeat intervals": ["activity0", "activity1"],
-             "wrong times": [{"activity0": time_diff0},{"activity1": time_diff1},],
-             }
+            {
+                 "correct module": correct module,
+                 "current module": [current module/s],
+                 "wrong module": 1 or 0,
+                 "wrong repeat intervals": ["activity0", "activity1"],
+                 "wrong times": [{"activity0": time_diff0},{"activity1": time_diff1},],
+            }
     """
     ret = {"correct module": "",
-             "current module": "",
-             "wrong module": 0,
-             "wrong repeat intervals": [],
-             "wrong times": [],
-             }
-    module_weeks = ["thought_patterns_beginner", "journal", "mindfulness_beginner", "games"]
-    modules = {
-        "thought_patterns_beginner": [["Thought Patterns Day 1", "none", 0],
-                                      ["Thought Patterns Day 2-7", "daily", 1]],
-        "journal": [["Journal Day 1-7", "daily", 0]],
-        "mindfulness_beginner": [
-            ["Mindfulness Day 1", "none", 0],
-                  ["Mindfulness Day 2", "none", 1],
-                  ["Mindfulness Day 3", "none", 2],
-                  ["Mindfulness Day 4", "none", 3],
-                  ["Mindfulness Day 5", "none", 4],
-                  ["Mindfulness Day 6", "none", 5],
-        ],
-        "games": [["Distraction Games Day 1", "none", 0],
-                  ["Distraction Games Day 2", "none", 1],
-                  ["Distraction Games Day 3", "none", 2],
-                  ["Distraction Games Day 4", "none", 3],
-                  ["Distraction Games Day 5", "none", 4],
-                  ["Distraction Games Day 6", "none", 5],
-                  ["Distraction Games Day 7", "none", 6],],
-    }
+           "current module": "",
+           "wrong module": 0,
+           "wrong repeat intervals": [],
+           "wrong times": [],
+        }
+
     # Figure out what module they are supposed to be on
     phase = LAMP.Type.get_attachment(part_id, 'org.digitalpsych.college_study_2.phases')["data"]
-    if phase["status"] != 'enrolled':
+    if phase["status"] != 'enrolled' and phase["status"] != 'enrolled':
         ret["correct module"] = "Done"
         return ret
-    phase_timestamp = phase['phases']['enrolled']
+    part_mods = LAMP.Type.get_attachment(part_id,
+                    "org.digitalpsych.college_study_3.modules")["data"]
+    phase_timestamp = phase['phases'][phase["status"]]
     curr_df = int(time.time() * 1000) - phase_timestamp
-    curr_time = math.floor(curr_df / MS_IN_DAY)
-    curr_mod = math.floor(curr_time / 7)
-    if curr_mod > 3:
-        ret["correct module"] = "Done"
-    else:
-        ret["correct module"] = module_weeks[curr_mod]
+
+    # Find current module/s
+    part_mods = [x for x in part_mods if x["phase"] == phase["status"]]
+    part_mods = [x for x in part_mods if (x["start_end"][0] < curr_df) &
+                                         (x["start_end"][1] >= curr_df)]
 
     # Figure out what module they are scheduled for
     acts = LAMP.Activity.all_by_participant(part_id)["data"]
     acts = [x for x in acts if x["schedule"] != []]
     act_df = pd.DataFrame(acts)
 
-    scheduled = []
-    if len(acts) > 0:
-        for k in modules:
-            mod = k
-            for x in modules[k]:
-                if len(act_df[act_df["name"] == x[0]]) != 1:
-                    mod = None
-            if mod is not None:
-                scheduled.append(mod)
+    need_to_schedule = False
+    for mod in part_mods:
+        # Check if the module is scheduled
+        for x in module_json[mod["module"]]["activities"]:
+            if len(act_df[act_df["name"] == x[0]]) != 1:
+                need_to_schedule = True
+        if need_to_schedule:
+            unschedule_other_surveys(part_id)
+            schedule_module(part_id, mod["module"], set_start_date(time.time() * 1000), module_json)
 
-    # Check if module is correct
-    ret["current module"] = scheduled
-    if len(scheduled) != 1:
-        if ret["correct module"] != "Done":
-            ret["wrong module"] = 1
-        return ret
-    elif scheduled[0] != ret["correct module"]:
-        ret["wrong module"] = 1
-        return ret
+def attach_modules(part_id):
+    """ Add in the modules to the participant attachment for weeks 1-4.
 
-    # Check if the activity schedules are correct
-    repeat = []
-    offset_arr = []
-    day0 = phase_timestamp + curr_mod * 7 * MS_IN_DAY
-    for x in modules[ret["correct module"]]:
-        schedule = list(act_df[act_df["name"] == x[0]]["schedule"])[0][0]
-        if schedule["repeat_interval"] != x[1]:
-            repeat.append(x[0])
-        start_time = int(datetime.datetime.fromisoformat(schedule["start_date"][:-1]).timestamp() * 1000)
-        if not (day0 + MS_IN_DAY * x[2] <= start_time <= day0 + MS_IN_DAY * x[2] + 1):
-            offset = int(day0 + MS_IN_DAY * x[2] - start_time)
-            offset_arr.append({"name": x[0], "time": offset / MS_IN_DAY})
-    ret["wrong repeat intervals"] = repeat
-    ret["wrong times"] = offset_arr
-    return ret
+        Week 1: Gratitude Journal
+        Week 2: Thought Patterns A
+        Week 3: Once the study starts, try to get the first weekly survey and
+            compute GAD-7. If > 10 assign games, else mindfulness. If still
+            no module, assign one of these two randomly and throw
+            an error.
+        Week 4: Thought Patterns B
+
+        Args:
+            part_id: the participant id
+    """
+    # Check where the participant is in the study.
+    phase = LAMP.Type.get_attachment(part_id, 'org.digitalpsych.college_study_2.phases')["data"]
+    part_mods = LAMP.Type.get_attachment(part_id,
+                    "org.digitalpsych.college_study_3.modules")["data"]
+    
+    # If in trial / completed / discontinued --> do nothing
+    if phase["status"] != 'enrolled':
+        return
+    
+    phase_timestamp = phase['phases']['enrolled']
+    curr_time = int(time.time() * 1000) - phase_timestamp
+    curr_day = math.floor(curr_time / MS_IN_DAY)
+    
+    # No matter what, daily / weekly should be assigned for enrolled participants. Check this
+    if len(part_mods) == 1 and part_mods[1]["module"] == "trial_period":
+        part_mods.append({
+                "module": "daily_and_weekly",
+                 "phase": "enrolled",
+                 "start_end": [0, 32 * MS_IN_DAY],
+                 "shift": 18
+            })
+    if not (len(part_mods) > 1 and
+        (part_mods[1]["module"] == "daily_and_weekly")):
+        part_mods.insert(1, {
+                "module": "daily_and_weekly",
+                 "phase": "enrolled",
+                 "start_end": [0, 32 * MS_IN_DAY],
+                 "shift": 18
+            })
+        print("TOO MANY MODULES")
+        return
+        
+    
+    # If in week 1 --> assign daily / weekly; gratitude journal
+    if curr_day <= 6:
+        if (len(part_mods) == 3 and
+            (part_mods[2]["module"] == "gratitude_journal")):
+            return
+        if len(part_mods) > 3:
+            print("TOO MANY MODULES")
+            return
+        part_mods.append({
+                "module": "gratitude_journal",
+                 "phase": "enrolled",
+                 "start_end": [0, 6 * MS_IN_DAY],
+                 "shift": 18
+            })
+    # If at the end of week 2 --> get weekly survey to assign module 2
+    if curr_day >= 20:
+        if len(part_mods) > 6:
+            print("TOO MANY MODULES")
+            return
+        if (len(part_mods) == 6 and
+            (part_mods[5]["module"] == "thought_patterns_b")):
+            return
+        part_mods.append({
+                "module": "thought_patterns_b",
+                 "phase": "enrolled",
+                 "start_end": [20 * MS_IN_DAY, 27 * MS_IN_DAY],
+                 "shift": 18
+            })
+    elif curr_day >= 13:
+        # If they have already been assigned something, all good
+        if (len(part_mods) == 5 and
+            ((part_mods[4]["module"] == "mindfulness") or
+             (part_mods[4]["module"] == "games"))):
+            return
+        if len(part_mods) > 5:
+            print("TOO MANY MODULES")
+            return
+        # Need to set module otherwise
+        mod_3, survey = _get_week_3_mod(part_id)
+        part_mods.append({
+                "module": mod_3,
+                 "phase": "enrolled",
+                 "start_end": [13 * MS_IN_DAY, 20 * MS_IN_DAY],
+                 "shift": 18
+            })
+    elif curr_day >= 6:
+        if len(part_mods) > 4:
+            print("TOO MANY MODULES")
+            return
+        if (len(part_mods) == 4 and
+            (part_mods[3]["module"] == "thought_patterns_a")):
+            return
+        part_mods.append({
+                "module": "thought_patterns_a",
+                 "phase": "enrolled",
+                 "start_end": [6 * MS_IN_DAY, 13 * MS_IN_DAY],
+                 "shift": 18
+            })      
+            
+def _get_week_3_mod(part_id):
+    """ Get the module for week 3 (mindfulness or games).
+
+        Args:
+            part_id: the participant id
+        Returns:
+            module, 0 / 1 for whether this was randomly chosen
+    """
+    GAD7_QUESTIONS = [
+            "Over the past week, I have felt nervous, anxious, or on edge.",
+            "Over the past week, I have not been able to stop or control worrying.",
+            "Over the past week, I have been worrying too much about different things.",
+            "Over the past week, I have had trouble relaxing.",
+            "Over the past week, I have felt so restless that it's hard to sit still.",
+            "Over the past week, I have felt myself becoming easily annoyed or irritable.",
+            "Over the past week, I have felt afraid as if something awful might happen.",
+    ]
+    value_map: {
+        "Not at all": 0,
+        "Several days": 1,
+        "More than half the days": 2,
+        "Over half the days": 2,
+        "Nearly every day": 3
+    }
+    act_events = LAMP.ActivityEvent.all_by_participant(part_id)["data"]
+    act_events = [x for x in act_events if len(x["temporal_slices"]) > 0]
+    gad7_score = -1
+    for x in act_events:
+        if gad7_score != -1:
+            for temp in x["temporal_slices"]:
+                if "value" not in temp or "item" not in temp:
+                    break
+                if temp["item"] in GAD7_QUESTIONS:
+                    if gad7_score == -1:
+                        gad7_score = 0
+                    gad7_score = value_map[temp["value"]]
+    # Have to pick a module
+    mod_2 = None
+    if gad7_score == -1 and curr_day == 6:
+        random.seed(time.time())
+        if random.random() < 0.5:
+            mod_2 = "games"
+        else:
+            mod_2 = "mindfulness"
+    elif gad7_score != -1 and gad7_score > 10:
+        mod_2 = "games"
+    elif gad7_score != -1 and gad7_score <= 10:
+        mod_2 = "mindfulness"
+    return mod_2, gad7_score != -1 
+                
