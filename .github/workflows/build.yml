@@ -2,7 +2,7 @@ name: Build College V2 image
 on:
   push:
     branches: 
-      - college_v2
+      - college_v3
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -13,5 +13,5 @@ jobs:
         username: ${{ github.repository_owner }}
         password: ${{ secrets.GITHUB_TOKEN }}
         registry: ghcr.io
-        repository: 'bidmcdigitalpsychiatry/lamp-college-study-v2'
+        repository: 'bidmcdigitalpsychiatry/lamp-college-study-v3'
         auto_tag: true
