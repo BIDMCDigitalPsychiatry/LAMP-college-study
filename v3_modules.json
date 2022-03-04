@@ -14,10 +14,9 @@
         "message": ""
     },
     "daily_and_weekly": {
-        "activities": ["Morning Daily Survey", "Weekly Survey",
-                       "Select Module 3", "Select Module 4"],
-        "daily": ["daily", "weekly", "none", "none"],
-        "times": [-36000000, 518400000, 864000000, 1468800000],
+        "activities": ["Morning Daily Survey", "Weekly Survey", "Weekly Survey (long)"],
+        "daily": ["daily", "weekly", "none"],
+        "times": [-36000000, 518400000, 0],
         "message": ""
     },
     "gratitude_journal": {

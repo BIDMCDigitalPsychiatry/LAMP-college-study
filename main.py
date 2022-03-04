@@ -18,16 +18,13 @@ import pandas as pd
 import module_scheduler
 import redcap
 
-
+from notificaitons import push, slack
 
 # [REQUIRED] Environment Variables
 APP_NAME = os.getenv("APP_NAME")
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
 DEBUG_MODE = True if os.getenv("DEBUG_MODE") == "on" else False
 PUBLIC_URL = os.getenv("PUBLIC_URL")
-PUSH_API_KEY = os.getenv("PUSH_API_KEY")
-PUSH_GATEWAY = os.getenv("PUSH_GATEWAY")
-PUSH_SLACK_HOOK = os.getenv("PUSH_SLACK_HOOK")
 LAMP_ACCESS_KEY = os.getenv("LAMP_ACCESS_KEY")
 LAMP_SECRET_KEY = os.getenv("LAMP_SECRET_KEY")
 RESEARCHER_ID = os.getenv("RESEARCHER_ID")
@@ -65,70 +62,6 @@ html = lambda body, disable_css=False: f"""
 </html>
 """
 
-# Helper function to send custom push notifications to devices or emails to addresses.
-def push(device, content, expiry=86400000):
-    if device.split(':', 1)[0] == 'mailto':
-        push_body = {
-            'api_key': PUSH_API_KEY,
-            'device_token': device,
-            'payload': {
-                'from': SUPPORT_EMAIL,
-                'cc': SUPPORT_EMAIL,
-                'subject': content.split('\n', 1)[0],
-                'body': content.split('\n', 1)[1]
-            }
-        }
-        if DEBUG_MODE:
-            log.debug(pformat(push_body))
-        else:
-            response = requests.post(f"https://{PUSH_GATEWAY}/push", headers={
-                'Content-Type': 'application/json'
-            }, json=push_body).json()
-            log.debug(pformat(response))
-        log.info(f"Sent email to {device} with content {content}.")
-    else: 
-        push_body = {
-            'api_key': PUSH_API_KEY,
-            'device_token': device,
-            'payload': {
-                "aps": {"content-available": 1} if content is None else {
-                    "alert": content, # 'Hello World!'
-                    "badge": 0,
-                    "sound": "default",
-                    "mutable-content": 1,
-                    "content-available": 1
-                },
-                "notificationId": content, # 'Hello World!'
-                "expiry": expiry, # 24*60*60*1000 (1day -> ms)
-                #"page": None, # 'https://dashboard.lamp.digital/'
-                "actions": []
-            }
-        }
-        if DEBUG_MODE:
-            log.debug(pformat(push_body))
-        else:
-            response = requests.post(f"https://{PUSH_GATEWAY}/push", headers={
-                'Content-Type': 'application/json'
-            }, json=push_body).json()
-        log.info(f"Sent push notification to {device} with content {content}.")
-
-# Requires Slack to be set up; alternative to checking script logs.
-def slack(text):
-    push_body = {
-        'api_key': PUSH_API_KEY,
-        'device_token': f"slack:{PUSH_SLACK_HOOK}",
-        'payload': {
-            'content': text
-        }
-    }
-    if DEBUG_MODE:
-        log.debug(pformat(push_body))
-    else:
-        response = requests.post(f"https://{PUSH_GATEWAY}/push", headers={
-            'Content-Type': 'application/json'
-        }, json=push_body).json()
-        log.info(f"Slack message response: {response}.")
-
 # Participant registration process driver code that handles all incoming HTTP requests.
 @app.route('/', methods=['GET', 'POST'], defaults={'path': ''})
 @app.route('/<path:path>', methods=['GET', 'POST'])
@@ -139,9 +72,15 @@ def index(path):
         # Validate the submitted RedCap code and email address.
         request_email = request.args.get('email')
         request_code = request.args.get('code')
-        if request_email is None or request_code != REDCAP_REQUEST_CODE:
-            log.warning('Participant registration input parameters were invalid. Please contact collegestudy@bidmc.harvard.edu for assistance.')
-            return html(f"<p>There was an error processing your request.</p>")
+        request_record_id = request.args.get('recordid')
+        if request_email is None or request_record_id is None or request_code != REDCAP_REQUEST_CODE:
+            log.warning(f"Participant registration input parameters were invalid.")
+            return html(f"<p>There was an error processing your request. Please contact {SUPPORT_EMAIL} for assistance.</p>")
+        try:
+            request_record_id = int(request_record_id)
+        except:
+            log.warning(f"Participant registration redcap id input parameters were invalid.")
+            return html(f"<p>There was an error processing your request. Please contact {SUPPORT_EMAIL} for assistance.</p>")
 
         # Require a dot EDU domain and exclude the fake "@students.edu" to prevent spamming.
         if not request_email.lower().endswith('.edu') or request_email.lower().endswith('@students.edu'):
@@ -154,8 +93,8 @@ def index(path):
         if request_email in registered_users:
             log.warning(f"Email address {request_email} was already in use; aborting registration.")
             return html(f"""<p>You've already signed up for this study.</p>
-            <form action="mailto:{SUPPORT_EMAIL}"> 
-                <input type="submit" value="Contact the Research Team (collegestudy@bidmc.harvard.edu) for support">
+            <form action="mailto:{SUPPORT_EMAIL}">
+                <input type="submit" value="Contact the Research Team ({SUPPORT_EMAIL}) for support">
             </form>""")
 
         # Select a random Study and create a new Participant and assign name and Credential.
@@ -180,10 +119,12 @@ def index(path):
 
             # set enrollment tag
             LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_3.phases', {'status':'new_user', 'phases':{'new_user':int(time.time()*1000)}})
+            # set the redcap info
+            LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_3.redcap_form_id', request_record_id)
             # Schedule College Study FAQs
             log.info("scheduling college study faqs")
             module_json = "v3_modules.json"
-            f = open(MODULE_JSON)
+            f = open(module_json)
             module_json = json.load(f)
             f.close()
             module_scheduler.schedule_module(participant_id, "new_user", module_scheduler.set_start_date(time.time() * 1000), module_json)
@@ -210,7 +151,7 @@ def index(path):
 
     # Unsupported HTTP Method, Path, or a similar 404.
     else:
-        return html(f"<p>There was an error processing your request. Please contact collegestudy@bidmc.harvard.edu if the issue persists.</p>")
+        return html(f"<p>There was an error processing your request. Please contact {SUPPORT_EMAIL} if the issue persists.</p>")
 
 # Driver code to accept HTTP requests.
 if __name__ == '__main__':

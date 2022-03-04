@@ -1,4 +1,3 @@
-
 import sys
 sys.path.insert(1, "/home/danielle/LAMP-py")
 import LAMP
@@ -8,8 +7,72 @@ import random
 import time
 import math
 import random
+import json
 
-MS_IN_DAY = 86400000
+from notifications import slack
+
+# DELETE THIS: FOR TESTING
+ENV_JSON_PATH = "/home/danielle/college_v3/env_vars.json"
+f = open(ENV_JSON_PATH)
+ENV_JSON = json.load(f)
+f.close()
+SUPPORT_EMAIL = ENV_JSON["SUPPORT_EMAIL"]
+RESEARCHER_ID = ENV_JSON["RESEARCHER_ID"]
+LAMP_ACCESS_KEY = ENV_JSON["LAMP_ACCESS_KEY"]
+LAMP_SECRET_KEY = ENV_JSON["LAMP_SECRET_KEY"]
+
+LAMP.connect(LAMP_ACCESS_KEY, LAMP_SECRET_KEY)
+
+MS_IN_A_DAY = 86400000
+
+MODULE_JSON_FILE = "v3_modules.json"
+f = open(MODULE_JSON_FILE)
+MODULE_JSON = json.load(f)
+f.close()
+
+MODULE_SPECS = {"trial_period": {
+                      "module": "trial_period",
+                      "phase": "trial",
+                      "start_end": [0, 345600000],
+                      "shift": 18
+                 },
+                 "daily_and_weekly": {
+                      "module": "daily_and_weekly",
+                      "phase": "enrolled",
+                      "start_end": [0, 32 * MS_IN_A_DAY],
+                      "shift": 18
+                 },
+                 "gratitude_journal": {
+                     "module": "gratitude_journal",
+                     "phase": "enrolled",
+                     "start_end": [0, 6 * MS_IN_A_DAY],
+                     "shift": 18
+                 },
+                 "thought_patterns_a": {
+                     "module": "thought_patterns_a",
+                     "phase": "enrolled",
+                     "start_end": [6 * MS_IN_A_DAY, 13 * MS_IN_A_DAY],
+                     "shift": 18
+                 },
+                 "thought_patterns_b": {
+                      "module": "thought_patterns_b",
+                      "phase": "enrolled",
+                      "start_end": [20 * MS_IN_A_DAY, 27 * MS_IN_A_DAY],
+                      "shift": 18
+                 },
+                 "mindfulness": {
+                     "module": "mindfulness",
+                     "phase": "enrolled",
+                     "start_end": [13 * MS_IN_A_DAY, 20 * MS_IN_A_DAY],
+                     "shift": 18
+                 },
+                 "games": {
+                     "module": "games",
+                     "phase": "enrolled",
+                     "start_end": [13 * MS_IN_A_DAY, 20 * MS_IN_A_DAY],
+                     "shift": 18
+                 }
+}
 
 def schedule_module(part_id, module_name, start_time, module_json):
     """ Schedule a module.
@@ -34,7 +97,7 @@ def schedule_module(part_id, module_name, start_time, module_json):
         try:
             message_data = LAMP.Type.get_attachment(part_id, "lamp.messaging")
         except:
-            print("No messages.")
+            pass
         message_data["data"].append({'from': 'researcher',
                                      'type': 'message',
                                      'date': dt_iso,
@@ -93,8 +156,7 @@ def _check_modules(act_dict, act_names):
             ret = -1
     return ret
 
-def unschedule_other_surveys(part_id, keep_these=["Morning Daily Survey", "Weekly Survey",
-                                                  "Select Module 3", "Select Module 4"]):
+def unschedule_other_surveys(part_id, keep_these=["Morning Daily Survey", "Weekly Survey"]):
     """ Delete schedules for all surveys except for keep_these.
     """
     act_dict = LAMP.Activity.all_by_participant(part_id)["data"]
@@ -106,8 +168,8 @@ def unschedule_other_surveys(part_id, keep_these=["Morning Daily Survey", "Weekl
                 LAMP.Activity.update(activity_id=act_dict[i]['id'], activity_activity=act_dict[i])
 
 def set_start_date(curr_time, shift=18):
-    """ Function to convert the start / end times to the next
-        Thursday at 6pm.
+    """ Function to convert the start / end times to the same
+        day at 6pm.
 
         Args:
             curr_time: the time in ms (for the date)
@@ -120,7 +182,7 @@ def set_start_date(curr_time, shift=18):
     end_datetime = datetime.datetime.combine(end_date, time_shift)
     return int(end_datetime.timestamp() * 1000)
 
-def correct_modules(part_id, module_json):
+def correct_modules(part_id, module_json=MODULE_JSON):
     """ Check what module someone is scheduled for, verify that the schedule
         is correct.
 
@@ -171,8 +233,8 @@ def correct_modules(part_id, module_json):
         }
 
     # Figure out what module they are supposed to be on
-    phase = LAMP.Type.get_attachment(part_id, 'org.digitalpsych.college_study_2.phases')["data"]
-    if phase["status"] != 'enrolled' and phase["status"] != 'enrolled':
+    phase = LAMP.Type.get_attachment(part_id, 'org.digitalpsych.college_study_3.phases')["data"]
+    if phase["status"] != 'enrolled' and phase["status"] != 'trial':
         ret["correct module"] = "Done"
         return ret
     part_mods = LAMP.Type.get_attachment(part_id,
@@ -194,7 +256,7 @@ def correct_modules(part_id, module_json):
     for mod in part_mods:
         # Check if the module is scheduled
         for x in module_json[mod["module"]]["activities"]:
-            if len(act_df[act_df["name"] == x[0]]) != 1:
+            if len(act_df) == 0 or len(act_df[act_df["name"] == x]) != 1:
                 need_to_schedule = True
         if need_to_schedule:
             unschedule_other_surveys(part_id)
@@ -215,97 +277,62 @@ def attach_modules(part_id):
             part_id: the participant id
     """
     # Check where the participant is in the study.
-    phase = LAMP.Type.get_attachment(part_id, 'org.digitalpsych.college_study_2.phases')["data"]
+    phase = LAMP.Type.get_attachment(part_id, 'org.digitalpsych.college_study_3.phases')["data"]
     part_mods = LAMP.Type.get_attachment(part_id,
                     "org.digitalpsych.college_study_3.modules")["data"]
-    
-    # If in trial / completed / discontinued --> do nothing
+
+    # If Trial, make sure that trial_period is scheduled
+    if phase["status"] == "trial":
+        if MODULE_SPECS["trial_period"] not in part_mods:
+            slack(f"Participant ({part_id}) did not have trial_period scheduled. Please check on this.")
+            part_mods.append(MODULE_SPECS["trial_period"])
+            LAMP.Type.set_attachment(RESEARCHER_ID, part_id,
+                             "org.digitalpsych.college_study_3.modules", part_mods)
+            # Correct errors
+            correct_modules(part_id)
+        return
+
+    # If completed / discontinued --> do nothing
     if phase["status"] != 'enrolled':
         return
-    
+
     phase_timestamp = phase['phases']['enrolled']
     curr_time = int(time.time() * 1000) - phase_timestamp
-    curr_day = math.floor(curr_time / MS_IN_DAY)
-    
-    # No matter what, daily / weekly should be assigned for enrolled participants. Check this
-    if len(part_mods) == 1 and part_mods[1]["module"] == "trial_period":
-        part_mods.append({
-                "module": "daily_and_weekly",
-                 "phase": "enrolled",
-                 "start_end": [0, 32 * MS_IN_DAY],
-                 "shift": 18
-            })
-    if not (len(part_mods) > 1 and
-        (part_mods[1]["module"] == "daily_and_weekly")):
-        part_mods.insert(1, {
-                "module": "daily_and_weekly",
-                 "phase": "enrolled",
-                 "start_end": [0, 32 * MS_IN_DAY],
-                 "shift": 18
-            })
-        print("TOO MANY MODULES")
-        return
-        
-    
-    # If in week 1 --> assign daily / weekly; gratitude journal
-    if curr_day <= 6:
-        if (len(part_mods) == 3 and
-            (part_mods[2]["module"] == "gratitude_journal")):
-            return
-        if len(part_mods) > 3:
-            print("TOO MANY MODULES")
-            return
-        part_mods.append({
-                "module": "gratitude_journal",
-                 "phase": "enrolled",
-                 "start_end": [0, 6 * MS_IN_DAY],
-                 "shift": 18
-            })
-    # If at the end of week 2 --> get weekly survey to assign module 2
-    if curr_day >= 20:
-        if len(part_mods) > 6:
-            print("TOO MANY MODULES")
-            return
-        if (len(part_mods) == 6 and
-            (part_mods[5]["module"] == "thought_patterns_b")):
-            return
-        part_mods.append({
-                "module": "thought_patterns_b",
-                 "phase": "enrolled",
-                 "start_end": [20 * MS_IN_DAY, 27 * MS_IN_DAY],
-                 "shift": 18
-            })
-    elif curr_day >= 13:
-        # If they have already been assigned something, all good
-        if (len(part_mods) == 5 and
-            ((part_mods[4]["module"] == "mindfulness") or
-             (part_mods[4]["module"] == "games"))):
-            return
-        if len(part_mods) > 5:
-            print("TOO MANY MODULES")
+    curr_day = math.floor(curr_time / MS_IN_A_DAY)
+
+    # Check and make sure all required modules have been assigned
+    req_mods = ["trial_period",
+                "daily_and_weekly",
+                "gratitude_journal",
+                "thought_patterns_a",
+                 "thought_patterns_b",]
+    for k in req_mods:
+        if MODULE_SPECS[k] not in part_mods:
+            slack(f"Participant ({part_id}) was not scheduled for {k}. Please check on this.")
+            part_mods.append(MODULE_SPECS[k])
+            LAMP.Type.set_attachment(RESEARCHER_ID, part_id,
+                             "org.digitalpsych.college_study_3.modules", part_mods)
+            # Correct errors
+            correct_modules(part_id)
+
+    # refresh in case anything changed
+    part_mods = LAMP.Type.get_attachment(part_id,
+                    "org.digitalpsych.college_study_3.modules")["data"]
+    # Now if curr_day is between the first and 3rd modules, try to add it
+    if 8 <= curr_day:
+        if MODULE_SPECS["mindfulness"] in part_mods or MODULE_SPECS["games"] in part_mods:
             return
         # Need to set module otherwise
         mod_3, survey = _get_week_3_mod(part_id)
+        if survey == 0 and curr_day < 11:
+            slack(f"Warning: Unable to get GAD-7 score for participant ({part_id}). Please check on this. Will schedule randomly at day 11. Currently day {curr_day}.")
+            return
+        elif survey == 0:
+            slack(f"Warning: Unable to get GAD-7 score for participant ({part_id}). Randomly choosing module (day = {curr_day}).")
         part_mods.append({
-                "module": mod_3,
-                 "phase": "enrolled",
-                 "start_end": [13 * MS_IN_DAY, 20 * MS_IN_DAY],
-                 "shift": 18
+                MODULE_SPECS[k]
             })
-    elif curr_day >= 6:
-        if len(part_mods) > 4:
-            print("TOO MANY MODULES")
-            return
-        if (len(part_mods) == 4 and
-            (part_mods[3]["module"] == "thought_patterns_a")):
-            return
-        part_mods.append({
-                "module": "thought_patterns_a",
-                 "phase": "enrolled",
-                 "start_end": [6 * MS_IN_DAY, 13 * MS_IN_DAY],
-                 "shift": 18
-            })      
-            
+
 def _get_week_3_mod(part_id):
     """ Get the module for week 3 (mindfulness or games).
 
@@ -323,7 +350,7 @@ def _get_week_3_mod(part_id):
             "Over the past week, I have felt myself becoming easily annoyed or irritable.",
             "Over the past week, I have felt afraid as if something awful might happen.",
     ]
-    value_map: {
+    value_map = {
         "Not at all": 0,
         "Several days": 1,
         "More than half the days": 2,
@@ -344,8 +371,7 @@ def _get_week_3_mod(part_id):
                     gad7_score = value_map[temp["value"]]
     # Have to pick a module
     mod_2 = None
-    if gad7_score == -1 and curr_day == 6:
-        random.seed(time.time())
+    if gad7_score == -1:
         if random.random() < 0.5:
             mod_2 = "games"
         else:
@@ -354,5 +380,4 @@ def _get_week_3_mod(part_id):
         mod_2 = "games"
     elif gad7_score != -1 and gad7_score <= 10:
         mod_2 = "mindfulness"
-    return mod_2, gad7_score != -1 
-                
+    return mod_2, gad7_score != -1
