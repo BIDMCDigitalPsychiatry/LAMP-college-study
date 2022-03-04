@@ -17,7 +17,7 @@ import pandas as pd
 
 import module_scheduler
 
-from notificaitons import push, slack
+from notifications import push, slack
 
 # [REQUIRED] Environment Variables
 APP_NAME = os.getenv("APP_NAME")
