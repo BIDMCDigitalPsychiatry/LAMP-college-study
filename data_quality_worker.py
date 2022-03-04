@@ -134,8 +134,8 @@ def check_active_and_passive_quality(participant_id, study_id, days_in_enrollmen
                      + " we are discontinuing your participation. We have turned off passive data"
                      + " collection from your account. You may delete the app. Thank you.")
         return
-    elif days_since_active >= 3:
-        slack(f"{participant_id} has not completed activites in 3 days. Please reach out!")
+    elif 3 <= days_since_active < 4:
+        slack(f"{participant_id} has not completed activites in at least 3 days. Please reach out!")
 
     passive = pd.DataFrame.from_dict(cortex.secondary.data_quality.data_quality(id=participant_id,
                                                start=int(time.time() * 1000) - 5 * MS_IN_A_DAY,
@@ -163,7 +163,7 @@ def make_participant_report(participant_id, study_id, request_email):
     phases = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_3.phases')['data']
     phase_start = phases["phases"][phases["status"]]
     mod, start_time, end_time = get_previous_module(phase_start, mods)
-    
+
     report_email = f"College Mental Health Study - Weekly Report\nCongrats on finishing another week! Here are your stats this week:<br><br>Streak: {streak} day/s<br>Daily surveys: {daily}<br>Weekly surveys: {weekly}"
     if end_time > -1:
         mod_perc_completion = get_mod_completion(participant_id, study_id, mod, start_time, end_time)

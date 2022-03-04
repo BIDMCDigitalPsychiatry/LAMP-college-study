@@ -4,7 +4,7 @@ import os
 import time
 import logging
 import json
-from notifications import push, slack
+from notifications import slack
 from end_of_study_worker import remove_participant
 
 #[REQUIRED] Environment Variables
@@ -196,7 +196,7 @@ def set_redcap_attachments():
     if int(time.time() * 1000) - college_v3_redcap["updated"] > 2 * 3600 * 1000:
         time_pulled = int(time.time() * 1000) - college_v3_redcap["updated"] / (3600 * 1000)
         time_pulled = "{:.2f}".format(time_pulled)
-        slack(f"Redcap data was pulled >2hrs ({time_pulled} hrs) ago. Aborting.")
+        slack(f"[WARNING] Redcap data was pulled >2hrs ({time_pulled} hrs) ago. Aborting.")
         return
 
     # 1) Attach redcap ids / counts for everyone in college
@@ -211,10 +211,8 @@ def set_redcap_attachments():
             # This participant does not have a name configured -- ignore
             continue
         LAMP.Type.set_attachment(RESEARCHER_ID, p,
-                                attachment_key='org.digitalpsych.college_study_2.redcap_count',
+                                attachment_key='org.digitalpsych.college_study_3.redcap_count',
                                 body=count_redcap_records(email))
-        print(p)
-        print(email)
         try:
             redcap_form_id = LAMP.Type.get_attachment(p, 'org.digitalpsych.college_study_3.redcap_form_id')["data"]
         except:

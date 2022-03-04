@@ -61,7 +61,7 @@ INTERVENTIONS = {
     "mindfulness": ["Anchoring Ambiance", "Calming your Body", "Forest and Nature Sounds", "Inner Teacher", "Loving Kindness", "Mountain Meditation"]
 }
 
-def get_intervention(participant_id):
+def get_intervention(participant_id, request_email):
     """ Get the intervetion for the given participant.
 
         0) Get passive data for the two days prior
@@ -208,7 +208,7 @@ def activity_worker():
                     days_in_study = math.floor((int(time.time()) * 1000 - phases["phases"][phases["status"]]) / MS_IN_A_DAY)
                     group = LAMP.Type.get_attachment(participant["id"], 'org.digitalpsych.college_study_3.group_id')['data']
                     if 0 < days_in_study < 28 and days_in_study % 4 == 0 and (group == 0 or group == 1):
-                        get_intervention()
+                        get_intervention(participant['id'], request_email)
 
     log.info('Sleeping activity worker...')
     slack(f"Activity worker completed.")

@@ -90,7 +90,6 @@ def payment_for_discontinued_participant(participant_id, study_id):
 
     # Send reminders if it is time for that
     payment_data = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_3.payment')['data']
-    payment_auth = LAMP.Type.get_attachment(participant_id, REDCAP_SURVEY_ATTACH)['data']
 
     missing_auth_forms = ""
     if payment_data["payment_authorization_1"]["earned"] and not payment_data["payment_authorization_1"]["auth"]:
@@ -137,7 +136,6 @@ def payment_for_participant(participant_id, study_id, days_since_start_enrollmen
 
     # Send reminders if it is time for that
     payment_data = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_3.payment')['data']
-    payment_auth = LAMP.Type.get_attachment(participant_id, REDCAP_SURVEY_ATTACH)['data']
 
     missing_auth_forms = ""
     if 7 <= days_since_start_enrollment < 10:
@@ -182,11 +180,11 @@ def get_codes_and_notify_participant(participant_id, payment_data, missing_auth_
     LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_3.payment', payment_data)
 
     if len(missing_auth_forms) > 0 and len(code_list) == 0:
-        push(f"mailto:{email_adress}", f"Missing payment authorization forms\nHello,<br><br>In order to recieve your compensation for completing Weekly Surveys, you must fill out payment authorization forms. If you have any questions, please reach out to us at {SUPPORT_EMAIL}. You are missing the following form/s:<br><br> {missing_auth_forms}<br><br>-Marvin (A Friendly College Study Bot) ")
+        push(f"mailto:{email_address}", f"Missing payment authorization forms\nHello,<br><br>In order to recieve your compensation for completing Weekly Surveys, you must fill out payment authorization forms. If you have any questions, please reach out to us at {SUPPORT_EMAIL}. You are missing the following form/s:<br><br> {missing_auth_forms}<br><br>-Marvin (A Friendly College Study Bot) ")
     elif len(missing_auth_forms) == 0 and len(code_list) > 0:
-        push(f"mailto:{email_adress}", f"College Study - Code\nHello,<br><br>Thank you for completing Weekly Surveys. Here is/are your gift code/s:<br><br> {code_list}<br><br>-Marvin (A Friendly College Study Bot) ")
+        push(f"mailto:{email_address}", f"College Study - Code\nHello,<br><br>Thank you for completing Weekly Surveys. Here is/are your gift code/s:<br><br> {code_list}<br><br>-Marvin (A Friendly College Study Bot) ")
     if len(missing_auth_forms) > 0 and len(code_list) > 0:
-        push(f"mailto:{email_adress}", f"Payment authorization forms and codes\nHello,<br><br>Thank you for completing Weekly Surveys. In order to recieve your compensation, you must fill out payment authorization forms. If you have any questions, please reach out to us at {SUPPORT_EMAIL}. You are missing the following form/s:<br><br> {missing_auth_forms}<br>You have earned the following code/s:<br><br>{code_list}<br><br>-Marvin (A Friendly College Study Bot) ")
+        push(f"mailto:{email_address}", f"Payment authorization forms and codes\nHello,<br><br>Thank you for completing Weekly Surveys. In order to recieve your compensation, you must fill out payment authorization forms. If you have any questions, please reach out to us at {SUPPORT_EMAIL}. You are missing the following form/s:<br><br> {missing_auth_forms}<br>You have earned the following code/s:<br><br>{code_list}<br><br>-Marvin (A Friendly College Study Bot) ")
 
 
 def payment_worker():

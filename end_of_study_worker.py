@@ -39,7 +39,7 @@ COMPLETED_EVERYTHING = (f"College Mental Health Study - Completed study\n"
 DAYS_28_MISSING_PAYMENT_3 = (f"College Mental Health Study - 28 days\n"
     + "Hello,<br><br>You have reached the end of the study. However, "
     + "it looks like you have not yet earned your 3rd gift code. "
-    + "We will give you the next couple of days to complete this survey"
+    + "We will give you the next couple of days to complete the Weekly Survey"
     + " and / or to fill out the required payment authorization form."
     + " If you have any questions, please let us know."
     + "<br><br>-Marvin (A Friendly College Study Bot)")
@@ -115,12 +115,12 @@ def end_of_study_worker():
                                            request_email, COMPLETED_EVERYTHING)
                     elif 28 <= days_in_study < 29:
                         push(DAYS_28_MISSING_PAYMENT_3)
-                if days_in_study > 32 and payment_data["earned"]:
+                if days_in_study > 32 and payment_data["earned"] and payment_data["code"] != "":
                     remove_participant(participant["id"], study["id"], "completed",
                                        request_email, DAYS_32_MISSING_PAYMENT_3)
                 elif days_in_study > 32:
                     remove_participant(participant["id"], study["id"], "completed",
-                                       request_email, COMPELTED_EVERYTHING)
+                                       request_email, COMPLETED_EVERYTHING)
 
     log.info('Sleeping end of study worker...')
     slack(f"End of study worker completed.")
