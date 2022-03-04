@@ -6,7 +6,7 @@ import requests
 from pprint import pformat
 
 # [REQUIRED] Environment Variables
-"""
+
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
 DEBUG_MODE = True if os.getenv("DEBUG_MODE") == "on" else False
 PUSH_API_KEY = os.getenv("PUSH_API_KEY")
@@ -14,8 +14,9 @@ PUSH_GATEWAY = os.getenv("PUSH_GATEWAY")
 PUSH_SLACK_HOOK = os.getenv("PUSH_SLACK_HOOK")
 LAMP_ACCESS_KEY = os.getenv("LAMP_ACCESS_KEY")
 LAMP_SECRET_KEY = os.getenv("LAMP_SECRET_KEY")
-"""
+
 # DELETE THIS: FOR TESTING
+"""
 ENV_JSON_PATH = "/home/danielle/college_v3/env_vars.json"
 f = open(ENV_JSON_PATH)
 ENV_JSON = json.load(f)
@@ -27,7 +28,7 @@ PUSH_GATEWAY = ENV_JSON["PUSH_GATEWAY"]
 PUSH_SLACK_HOOK = ENV_JSON["PUSH_SLACK_HOOK"]
 LAMP_ACCESS_KEY = ENV_JSON["LAMP_ACCESS_KEY"]
 LAMP_SECRET_KEY = ENV_JSON["LAMP_SECRET_KEY"]
-
+"""
 
 LAMP.connect(LAMP_ACCESS_KEY, LAMP_SECRET_KEY)
 logging.basicConfig(level=logging.DEBUG)
