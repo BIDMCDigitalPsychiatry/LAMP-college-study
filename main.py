@@ -16,7 +16,6 @@ from flask import Flask, request
 import pandas as pd
 
 import module_scheduler
-import redcap
 
 from notificaitons import push, slack
 
