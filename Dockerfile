@@ -5,5 +5,5 @@ RUN pip install -r /tmp/requirements.txt
 WORKDIR /app
 COPY main.py /app
 COPY module_scheduler.py /app
-COPY notificaitons.py /app
+COPY notifications.py /app
 CMD ["python", "-u", "main.py"]
