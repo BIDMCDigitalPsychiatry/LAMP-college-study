@@ -97,6 +97,7 @@ def index(path):
             </form>""")
 
         # Select a random Study and create a new Participant and assign name and Credential.
+        created_user = False
         try:
             url = f'https://api.lamp.digital/researcher/{RESEARCHER_ID}/study/clone'
             headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8','authorization':f"{os.getenv('LAMP_ACCESS_KEY')}:{os.getenv('LAMP_SECRET_KEY')}"}
@@ -113,9 +114,12 @@ def index(path):
             participant_id = LAMP.Participant.all_by_study(study_id)['data'][0]['id']
             log.info(f"setting lamp.name for {participant_id}")
             LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'lamp.name', request_email)
-            name0 = LAMP.Type.get_attachment(participant_id, 'lamp.name')
-            log.info(f"setting lamp.name for {participant_id}, set as {name0}")
+            log.info(f"setting lamp.name for {participant_id}, set as {request_email}")
+            created_user = True
 
+        except:
+            log.exception("API ERROR")
+        if created_user:
             # set enrollment tag
             LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_3.phases', {'status':'new_user', 'phases':{'new_user':int(time.time()*1000)}})
             # set the redcap info
@@ -129,9 +133,8 @@ def index(path):
             module_scheduler.schedule_module(participant_id, "new_user", module_scheduler.set_start_date(time.time() * 1000), module_json)
             log.info("scheduled.")
             log.info(f"Configured Participant ID {participant_id} with a generated login credential using {request_email}.")
-
-        except:
-            log.exception("API ERROR")
+         else:
+            log.exception("Some error creating user")
 
         # Notify the requester's email address of this information and mark them in the registered_users Tag.
         push(f"mailto:{request_email}", f"Welcome to mindLAMP.\nThank you for completing the enrollment survey and informed consent process. We have generated an account for you to download the mindLAMP app and get started.\n This is your username: {participant_id + '@lamp.com'} password: {participant_id}.\nPlease follow this link to download and login to the app: https://www.digitalpsych.org/college-covid You will need the password given to you in this email.\n")
