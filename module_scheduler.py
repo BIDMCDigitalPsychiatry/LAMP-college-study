@@ -1,5 +1,4 @@
 import sys
-sys.path.insert(1, "/home/danielle/LAMP-py")
 import LAMP
 import pandas as pd
 import datetime
@@ -11,7 +10,13 @@ import json
 
 from notifications import slack
 
+SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
+LAMP_ACCESS_KEY = os.getenv("LAMP_ACCESS_KEY")
+LAMP_SECRET_KEY = os.getenv("LAMP_SECRET_KEY")
+RESEARCHER_ID = os.getenv("RESEARCHER_ID")
+
 # DELETE THIS: FOR TESTING
+"""
 ENV_JSON_PATH = "/home/danielle/college_v3/env_vars.json"
 f = open(ENV_JSON_PATH)
 ENV_JSON = json.load(f)
@@ -20,6 +25,7 @@ SUPPORT_EMAIL = ENV_JSON["SUPPORT_EMAIL"]
 RESEARCHER_ID = ENV_JSON["RESEARCHER_ID"]
 LAMP_ACCESS_KEY = ENV_JSON["LAMP_ACCESS_KEY"]
 LAMP_SECRET_KEY = ENV_JSON["LAMP_SECRET_KEY"]
+"""
 
 LAMP.connect(LAMP_ACCESS_KEY, LAMP_SECRET_KEY)
 
