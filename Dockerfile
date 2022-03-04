@@ -6,4 +6,5 @@ WORKDIR /app
 COPY main.py /app
 COPY module_scheduler.py /app
 COPY notifications.py /app
+COPY v3_modules.json /app
 CMD ["python", "-u", "main.py"]
