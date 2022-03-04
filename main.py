@@ -133,7 +133,7 @@ def index(path):
             module_scheduler.schedule_module(participant_id, "new_user", module_scheduler.set_start_date(time.time() * 1000), module_json)
             log.info("scheduled.")
             log.info(f"Configured Participant ID {participant_id} with a generated login credential using {request_email}.")
-         else:
+        else:
             log.exception("Some error creating user")
 
         # Notify the requester's email address of this information and mark them in the registered_users Tag.
