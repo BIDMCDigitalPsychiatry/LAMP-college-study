@@ -103,14 +103,15 @@ def index(path):
             headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8','authorization':f"{os.getenv('LAMP_ACCESS_KEY')}:{os.getenv('LAMP_SECRET_KEY')}"}
             payload = json.dumps({'study_id': COPY_STUDY_ID, 'should_add_participant': 'true', 'name': request_email})
             r = requests.post(url, data=payload, headers=headers)
+            study_id = r.json()['data']
 
-            # Find new this new study
+            # Make sure this user does not have duplicated accounts
             all_studies = LAMP.Study.all_by_researcher(RESEARCHER_ID)['data']
             studies = [study for study in all_studies if study['name'] == request_email]
             if len(studies) > 1:
                 slack(f"[DUPLICATE STUDY] Multiple studies under the email {request_email}")
 
-            study_id = studies[0]['id']
+            # study_id = studies[0]['id']
             participant_id = LAMP.Participant.all_by_study(study_id)['data'][0]['id']
             log.info(f"setting lamp.name for {participant_id}")
             LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'lamp.name', request_email)
