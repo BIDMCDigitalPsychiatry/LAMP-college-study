@@ -3,7 +3,7 @@
         "activities": ["College Study FAQs"],
         "daily": ["none"],
         "times": [0],
-        "message": "Welcome to the College Study! Please take a look at the College Study FAQs Learn Tip (which can be found in the feed or the learn tab. Each morning, users are moved to the Trial Period. Look out for the Trial Period surveys which will be added to your feed. Please email us know if you have any questions!"
+        "message": "Welcome to the College Study! Please take a look at the College Study FAQs Learn Tip (which can be found in the feed or the learn tab). Each morning, users are moved to the Trial Period. Look out for the Trial Period surveys which will be added to your feed. Please email us if you have any questions!"
     },
     "trial_period": {
         "activities": ["Trial Period Day 1",

@@ -1,10 +1,8 @@
-# -*- coding: utf-8 -*-
+""" Module for trial worker """
 import os
 import sys
 import json
-sys.path.insert(1, "/home/danielle/LAMP-py")
 import LAMP
-sys.path.insert(1, "/home/danielle/LAMP-cortex")
 import cortex
 import time
 import random
@@ -14,17 +12,17 @@ from pprint import pformat
 import pandas as pd
 
 import module_scheduler
-from notifications import push, slack
+from notifications import push, slack, slack_danielle
 from end_of_study_worker import remove_participant
 
 #[REQUIRED] Environment Variables
-"""
 LAMP_ACCESS_KEY = os.getenv("LAMP_USERNAME")
 LAMP_SECRET_KEY = os.getenv("LAMP_PASSWORD")
 RESEARCHER_ID = os.getenv("RESEARCHER_ID")
 COPY_STUDY_ID = os.getenv("COPY_STUDY_ID")
 TRIAL_DAYS = float(os.getenv("TRIAL_DAYS"))
 GPS_SAMPLING_THRESHOLD = float(os.getenv("GPS_SAMPLING_THRESHOLD"))
+SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
 """
 # DELETE THIS: FOR TESTING
 ENV_JSON_PATH = "/home/danielle/college_v3/env_vars.json"
@@ -38,7 +36,7 @@ TRIAL_DAYS = int(ENV_JSON["TRIAL_DAYS"])
 GPS_SAMPLING_THRESHOLD = float(ENV_JSON["GPS_SAMPLING_THRESHOLD"])
 LAMP_ACCESS_KEY = ENV_JSON["LAMP_ACCESS_KEY"]
 LAMP_SECRET_KEY = ENV_JSON["LAMP_SECRET_KEY"]
-
+"""
 LAMP.connect(LAMP_ACCESS_KEY, LAMP_SECRET_KEY)
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
@@ -52,8 +50,8 @@ f.close()
 TRIAL_SURVEY_SCHEDULE = MODULE_JSON["trial_period"]["activities"]
 
 def _check_active_and_passive(participant_id, study_id):
-    """ Check that the participant has completed all of the Trial period
-        survey and has sufficient data quality.
+    """ Check that the participant has completed all of the Trial Period
+        surveys and has sufficient data quality.
     """
     act_df = pd.DataFrame(LAMP.ActivityEvent.all_by_participant(participant_id)["data"])
     survey_ids = pd.DataFrame(LAMP.Activity.all_by_study(study_id)["data"])
@@ -71,7 +69,7 @@ def _check_active_and_passive(participant_id, study_id):
             completed.append(t)
 
     passive = pd.DataFrame.from_dict(cortex.secondary.data_quality.data_quality(id=participant_id,
-                                               start=int(time.time() * 1000) - TRIAL_DAYS * MS_IN_A_DAY,
+                                               start=int(time.time() * 1000) - (TRIAL_DAYS - 1) * MS_IN_A_DAY,
                                                end=int(time.time() * 1000) + 1,
                                                resolution=MS_IN_A_DAY,
                                                feature="gps",
@@ -97,9 +95,8 @@ def check_to_move_to_enrollment(participant_id, study_id, days_since_start_trial
     for event in data:
         if event['activity'] in [ts['id'] for ts in trial_surveys]:
             for s in event['temporal_slices']:
-                if s['item'] == support_number_text:
+                if s['item'] == support_number_text and support_number_value is None:
                     support_number_value = s['value']
-                    break
 
     safety_plan = [act for act in LAMP.Activity.all_by_participant(participant_id)['data'] if act['name'] == 'Safety Plan'][0]
     if 'College Mental Health Center' not in [setting['title'] for setting in safety_plan['settings']] and support_number_value != None:
@@ -117,7 +114,6 @@ def check_to_move_to_enrollment(participant_id, study_id, days_since_start_trial
             LAMP.Activity.update(activity_id=safety_plan['id'], activity_activity=safety_plan_dict_updated)
         except LAMP.exceptions.ApiTypeError:
             pass
-
     # If # of trial surveys or GPS sampling frequency meet threshold --> enroll
     if len(completed) == len(trial_surveys) and passive >= GPS_SAMPLING_THRESHOLD:
         move_to_enrollment(participant_id)
@@ -133,21 +129,32 @@ def check_to_move_to_enrollment(participant_id, study_id, days_since_start_trial
             push(f"mailto:{request_email}", f"Trial Period Warning\nHello,<br><br>In order to enter the Enrollment Period of the College Study, you must complete all Trial Period surveys. Please complete these surveys in the next 24 hours in order to continue in the study. You are missing the following survey/s:<br><br> {missing_print}<br><br>-Marvin (A Friendly College Study Bot) ")
             slack(f"{participant_id} is missing trial period surveys")
         else:
-            push(f"mailto:{request_email}", f"Trial Period Warning\nHello,<br><br>Your data quality during the Trial Period has been insufficient. Please ensure that your passive data sensors are active for the LAMP app; else, you will be unable to continue to the Enrollment Period. Let us know if you have any questions.<br><br>-Marvin (A Friendly College Study Bot) ")
+            push(f"mailto:{request_email}", f"Trial Period Warning\nHello,<br><br>Your data quality during the Trial Period has been insufficient. Please ensure that your passive data sensors are active for the LAMP app; else, you will be unable to continue to the Enrollment Period. Please delete and redownload the app, making sure you allow all permissions and keep your phone off of low-battery mode as much as possible. If you have an iOS device go to your phone settings and ensure that location is set to 'always' for mindLAMP. Let us know if you have any questions.<br><br>-Marvin (A Friendly College Study Bot) ")
             slack(f"{participant_id} has bad trial period data quality")
     elif len(completed) != len(trial_surveys):
         remove_participant(participant_id, study_id, "discontinued", request_email,
                                f"College Mental Health Study - Discontinuing participation\n"
                      + "Thank you for your interest in the study. Unfortunately, since you have not satisfied the Trial Period requirements,"
                      + " we are discontinuing your participation. We have turned off passive data"
-                     + " collection from your account. Please feel free to delete the app. Thank you.")
+                     + " collection from your account. Please feel free to delete the app. Thank you.", send=1)
         # Remove from registered users so they could presumably restart if they wanted to (although not encouraged)
         registered_users = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.college_study_3.registered_users')["data"]
-        registered_users.remove(request_email)
+        if request_email in registered_users:
+            registered_users.remove(request_email)
         LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_3.registered_users', registered_users)
     else:
         passive = "{:.3f}".format(passive)
-        slack(f"{participant_id} has bad trial period data quality ({passive}): Suggest DISCONTINUING")
+        slack(f"{participant_id} ({request_email}) has bad trial period data quality ({passive}): Suggest DISCONTINUING")
+        remove_participant(participant_id, study_id, "discontinued", request_email,
+                               f"College Mental Health Study - Discontinuing participation\n"
+                     + "Thank you for your interest in the study. Unfortunately, since you have not satisfied the Trial Period data quality requirements,"
+                     + " we are discontinuing your participation. We have turned off passive data"
+                     + " collection from your account. Please feel free to delete the app. Thank you.", send=1)
+        # Remove from registered users so they could presumably restart if they wanted to (although not encouraged)
+        registered_users = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.college_study_3.registered_users')["data"]
+        if request_email in registered_users:
+            registered_users.remove(request_email)
+        LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_3.registered_users', registered_users)
 
 def move_to_enrollment(participant_id):
     """ Move participant from Trial to Enrollment.
@@ -163,8 +170,6 @@ def move_to_enrollment(participant_id):
     if new_group == 3:
         new_group = 0
     LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_3.sequential_groups', new_group)
-    if group == 0:
-        slack(f"New Digital Nav participant: {participant_id}")
     part_mods = [{
                       "module": "trial_period",
                       "phase": "trial",
@@ -200,7 +205,7 @@ def move_to_enrollment(participant_id):
                              "org.digitalpsych.college_study_3.modules", part_mods)
 
     phases = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_3.phases')['data']
-    phases['phases']['enrolled'] = int(time.time() * 1000)
+    phases['phases']['enrolled'] = module_scheduler.set_start_date(int(time.time()*1000), shift=8)
     phases['status'] = 'enrolled'
     LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_3.phases', phases)
 
@@ -251,7 +256,7 @@ def trial_worker():
                 days_since_start = (int(time.time() * 1000) - data[-1]['timestamp']) / (MS_IN_A_DAY)
                 if days_since_start > 0:
                     log.info(f"WARNING: Participant \"{participant['id']}\" has been participating in the trial period, yet does not have an enrolled tag.")
-                    slack(f"WARNING: Participant \"{participant['id']}\" has been participating in the trial period, yet does not have an enrolled tag.")
+                    slack(f"WARNING: Participant {request_email} \"{participant['id']}\" has been participating in the trial period, yet does not have an enrolled tag.")
                 log.info(e)
             if phases is not None:
                 if phases['status'] != 'trial' and phases['status'] != 'new_user': continue
@@ -259,7 +264,7 @@ def trial_worker():
                     # only move new users if they've been a new user for at least
                     # 2 hours to prevent Redcap edge cases
                     if int(time.time() * 1000) - phases['phases']['new_user'] > 2 * 600 * 1000:
-                        phases['phases']['trial'] = int(time.time()*1000)
+                        phases['phases']['trial'] = module_scheduler.set_start_date(int(time.time()*1000), shift=8)
                         phases['status'] = 'trial'
                         LAMP.Type.set_attachment(RESEARCHER_ID, participant['id'], 'org.digitalpsych.college_study_3.phases', phases)
                         LAMP.Type.set_attachment(RESEARCHER_ID, participant['id'], "org.digitalpsych.college_study_3.modules", [{
@@ -279,7 +284,8 @@ def trial_worker():
                         check_to_move_to_enrollment(participant['id'], study['id'], days_since_start_trial, request_email)
 
     log.info('Sleeping trial worker...')
-    slack(f"Trial worker completed.")
+    slack("[0] Trial worker completed.")
+    slack_danielle("[0] (COLLEGE V3) Trial worker completed.")
 
 if __name__ == '__main__':
     trial_worker()

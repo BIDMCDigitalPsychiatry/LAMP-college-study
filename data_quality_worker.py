@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
+""" Module to check participant data quality, send participant reports,
+    and make data portal graphs
+"""
 import os
 import sys
 import json
-sys.path.insert(1, "/home/danielle/LAMP-py")
 import LAMP
-sys.path.insert(1, "/home/danielle/LAMP-cortex")
 import cortex
 import time
 import datetime
@@ -15,19 +16,22 @@ import requests
 from pprint import pformat
 import pandas as pd
 
-from notifications import push, slack
+from notifications import push, slack, slack_danielle
 from end_of_study_worker import remove_participant
+from module_scheduler import set_start_date
 
 #[REQUIRED] Environment Variables
-"""
 LAMP_ACCESS_KEY = os.getenv("LAMP_USERNAME")
 LAMP_SECRET_KEY = os.getenv("LAMP_PASSWORD")
 RESEARCHER_ID = os.getenv("RESEARCHER_ID")
 COPY_STUDY_ID = os.getenv("COPY_STUDY_ID")
 TRIAL_DAYS = float(os.getenv("TRIAL_DAYS"))
+ENROLLMENT_DAYS = float(os.getenv("ENROLLMENT_DAYS"))
 GPS_SAMPLING_THRESHOLD = float(os.getenv("GPS_SAMPLING_THRESHOLD"))
-"""
+SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
+
 # DELETE THIS: FOR TESTING
+"""
 ENV_JSON_PATH = "/home/danielle/college_v3/env_vars.json"
 f = open(ENV_JSON_PATH)
 ENV_JSON = json.load(f)
@@ -39,12 +43,13 @@ ENROLLMENT_DAYS = ENV_JSON["ENROLLMENT_DAYS"]
 GPS_SAMPLING_THRESHOLD = float(ENV_JSON["GPS_SAMPLING_THRESHOLD"])
 LAMP_ACCESS_KEY = ENV_JSON["LAMP_ACCESS_KEY"]
 LAMP_SECRET_KEY = ENV_JSON["LAMP_SECRET_KEY"]
+"""
 
 LAMP.connect(LAMP_ACCESS_KEY, LAMP_SECRET_KEY)
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
-#Globals
+# Globals
 MS_IN_A_DAY = 86400000
 MODULE_JSON_FILE = "v3_modules.json"
 f = open(MODULE_JSON_FILE)
@@ -108,6 +113,12 @@ def check_active_and_passive_quality(participant_id, study_id, days_in_enrollmen
             --> no active in the past 5 days --> discontinue participant
         2) Passive data
             --> bad passive in the past 5 days --> ping digital nav
+
+        Args:
+            participant_id: the participant id
+            study_id: the id for the study
+            days_in_enrollment: days in enrollment so far
+            request_email: the participant email
     """
     data = LAMP.ActivityEvent.all_by_participant(participant_id)['data']
     all_activities = LAMP.Activity.all_by_study(study_id)['data']
@@ -119,10 +130,10 @@ def check_active_and_passive_quality(participant_id, study_id, days_in_enrollmen
                                f"College Mental Health Study - Discontinuing participation\n"
                      + "Thank you for your interest in the study. Unfortunately, since you failed to complete the Weekly Survey (long),"
                      + " we are discontinuing your participation. We have turned off passive data"
-                     + " collection from your account. You may delete the app. Thank you.")
+                     + " collection from your account. You may delete the app. Thank you.", send=1)
         return
     elif len(weekly_long_event) == 0 and 3 < days_in_enrollment <= 4:
-        push(f"mailto:{request_email}", f"College Mental Health Study - Weekly Survey Warning\nHello,<br><br>In order to continue in the College Study, you must complete the Weekly Survey (long) during the first week. Please complete this surveys ASAP.<br><br>-Marvin (A Friendly College Study Bot) ")
+        push(f"mailto:{request_email}", f"College Mental Health Study - Weekly Survey Warning\nHello,<br><br>In order to continue in the College Study, you must complete the 'Weekly Survey (long)' during the first week. Note that this survey is different from the 'Weekly Survey'; it has some extra questions. Please complete this survey ASAP.<br><br>-Marvin (A Friendly College Study Bot) ")
 
     # Get last active data
     last_active_timestamp = data[0]["timestamp"]
@@ -132,10 +143,12 @@ def check_active_and_passive_quality(participant_id, study_id, days_in_enrollmen
                                f"College Mental Health Study - Discontinuing participation\n"
                      + "Thank you for your interest in the study. Unfortunately, since you have not completed any activities in the past 5 days,"
                      + " we are discontinuing your participation. We have turned off passive data"
-                     + " collection from your account. You may delete the app. Thank you.")
+                     + " collection from your account. If you have been sent Payment Authorization Forms you may still"
+                     + " complete these forms to earn your gift codes. You may delete the app. Thank you.", send=1)
         return
     elif 3 <= days_since_active < 4:
-        slack(f"{participant_id} has not completed activites in at least 3 days. Please reach out!")
+        # slack(f"{participant_id} has not completed activites in at least 3 days. Please reach out!")
+        push(f"mailto:{request_email}", f"College Mental Health Study - Data Quality Warning\nHello,<br><br>We noticed that you haven’t been very active in mindLAMP as of late. Make sure to complete those Daily and Weekly surveys and the module activities that show on your feed each day. Unfortunately, if we don’t see increased participation, we’ll need to discontinue you from the study. Please let us know if you have any questions!<br><br>-Marvin (A Friendly College Study Bot) ")
 
     passive = pd.DataFrame.from_dict(cortex.secondary.data_quality.data_quality(id=participant_id,
                                                start=int(time.time() * 1000) - 5 * MS_IN_A_DAY,
@@ -146,9 +159,10 @@ def check_active_and_passive_quality(participant_id, study_id, days_in_enrollmen
     passive = passive["value"].mean()
     if passive <= GPS_SAMPLING_THRESHOLD:
         passive = "{:.3f}".format(passive)
-        slack(f"{participant_id} has bad enrollment period data quality ({passive}): Suggest DISCONTINUING")
+        slack(f"{participant_id} ({request_email}) has bad enrollment period data quality ({passive}): Suggest DISCONTINUING")
+        push(f"mailto:{request_email}", f"College Mental Health Study - Passive Data Warning\nHello,<br><br>Your data quality has been insufficient. Please ensure that your passive data sensors are active for the LAMP app; else, you may be discontinued. Please delete and redownload the app, making sure you allow all permissions and keep your phone off of low-battery mode as much as possible. If you have an iOS device go to your phone settings and ensure that location is set to 'always' for mindLAMP. Let us know if you have any questions.<br><br>-Marvin (A Friendly College Study Bot) ")
 
-def make_participant_report(participant_id, study_id, request_email):
+def make_participant_report(participant_id, study_id, email):
     """ Email participants at the end of each week with:
             --> streak
             --> % completion daily
@@ -171,15 +185,25 @@ def make_participant_report(participant_id, study_id, request_email):
         mod_perc_completion = "{:.1f}".format(mod_perc_completion)
         report_email = f"{report_email}<br>Percent of module completed: {mod_perc_completion}%"
     report_email = report_email + "<br><br>Cheers!<br>Marvin (A Friendly College Study Bot) "
-    push(f"mailto:{request_email}", report_email)
+    push(f"mailto:{email}", report_email)
 
 def get_previous_module(phase_start, mods):
+    """ Figure out which was the last module a participant completed
+        (if they completed one)
+
+        Args:
+            phase_start: start of the phase, must be in enrollment
+            mods: modules from the module attachment
+        Returns:
+            The module name, start time, and end time (true, not relative)
+            or -1, -1, -1 if no modules are done
+    """
     end_time = -1
     start_time = -1
     for m in mods:
         if m["module"] != "trial_period" and m["module"] != "daily_and_weekly":
             mod_end = phase_start + m["start_end"][1]
-            if int(time.time()) * 1000 < mod_end and mod_end > end_time:
+            if int(time.time()) * 1000 > mod_end and mod_end > end_time:
                 end_time = mod_end
                 mod = m["module"]
                 start_time = phase_start + m["start_end"][0]
@@ -188,6 +212,17 @@ def get_previous_module(phase_start, mods):
     return -1, -1, -1
 
 def get_mod_completion(participant_id, study_id, mod, start_time, end_time):
+    """ Get the module completion for a given participant
+
+        Args:
+            participant_id: the participant id
+            study_id: the study_id
+            mod: the name of the module
+            start_time: start of the module
+            end_time: end of the module
+        Returns:
+            The percent of the module that has been completed
+    """
     mod_counts = MODULE_COUNTS[mod]
     part_counts = {k: 0 for k in mod_counts}
     all_data = LAMP.ActivityEvent.all_by_participant(participant_id)['data']
@@ -201,11 +236,22 @@ def get_mod_completion(participant_id, study_id, mod, start_time, end_time):
     return sum([part_counts[k] for k in part_counts]) / sum([mod_counts[k] for k in mod_counts])
 
 def get_participant_active_stats(participant_id, study_id):
+    """ Get the activity stats for a participant:
+
+        Args:
+            participant_id: the participant id
+            study_id: the study id
+        Returns:
+            The streak, count of daily activities, count of weekly activities,
+            and days since the last activity was completed
+    """
     # get acts in the past week
     all_data = LAMP.ActivityEvent.all_by_participant(participant_id)['data']
-    data = [x for x in all_data if x["timestamp"] > time.time() - 7 * MS_IN_A_DAY]
+    data = [x for x in all_data if x["timestamp"] > int(time.time() * 1000) - 7 * MS_IN_A_DAY]
     all_activities = LAMP.Activity.all_by_study(study_id)['data']
-    days_since_last_act = (int(time.time()) * 1000 - data[0]["timestamp"]) / MS_IN_A_DAY
+    days_since_last_act = 0
+    if len(data) > 0:
+        days_since_last_act = (int(time.time()) * 1000 - data[0]["timestamp"]) / MS_IN_A_DAY
 
     # Daily
     daily_id = [x["id"] for x in all_activities if x['name'] == "Morning Daily Survey"][0]
@@ -216,7 +262,10 @@ def get_participant_active_stats(participant_id, study_id):
 
     streak = 0
     has_streak = True
-    t = int(time.time()) * 1000
+    t = set_start_date(int(time.time()) * 1000, shift=5)
+    d = [x for x in all_data if t < x["timestamp"]]
+    if len(d) > 0:
+        streak += 1
     while has_streak:
         d = [x for x in all_data if t >= x["timestamp"] > t - 1 * MS_IN_A_DAY]
         if len(d) > 0:
@@ -235,8 +284,8 @@ def make_data_portal_graphs():
         --> % module completion (past module)
     """
     weekly_counts = {
-        "Week": ["week 0", "week 1", "week 2", "week 3"],
-        "Count": [0, 0, 0, 0]
+        "Week": ["trial", "week 0", "week 1", "week 2", "week 3"],
+        "Count": [0, 0, 0, 0, 0]
     }
     activity_completion = {
         "Participant ID": [],
@@ -261,16 +310,18 @@ def make_data_portal_graphs():
             except Exception as e:
                 pass
             if phases is not None:
+                if phases['status'] == 'trial':
+                    weekly_counts["Count"][0] += 1
                 if phases['status'] != 'enrolled': continue
                 days_since_start_enrolled = (int(time.time() * 1000) - phases['phases']['enrolled']) / (MS_IN_A_DAY)
                 if days_since_start_enrolled < 7:
-                    weekly_counts["Count"][0] += 1
-                elif days_since_start_enrolled < 14:
                     weekly_counts["Count"][1] += 1
-                elif days_since_start_enrolled < 21:
+                elif days_since_start_enrolled < 14:
                     weekly_counts["Count"][2] += 1
-                else:
+                elif days_since_start_enrolled < 21:
                     weekly_counts["Count"][3] += 1
+                else:
+                    weekly_counts["Count"][4] += 1
                 _, daily_count, weekly_count, days_since_last_act = get_participant_active_stats(participant['id'], study['id'])
                 prev_act["Participant ID"].append(participant["id"])
                 prev_act["Days since last activity"].append(days_since_last_act)
@@ -293,8 +344,8 @@ def make_data_portal_graphs():
 
     # Counts of participants by week
     weekly_counts = pd.DataFrame(weekly_counts)
-    val = ["week 0", "week 1", "week 2", "week 3"]
-    col = ["crimson", "limegreen", "royalblue", "magenta"]
+    val = ["trial", "week 0", "week 1", "week 2", "week 3"]
+    col = ["gray", "crimson", "limegreen", "royalblue", "magenta"]
     chart = alt.Chart(weekly_counts, title=f"Participants by week (last updated: {FORMATTED_DATE})").mark_bar().encode(
         x=alt.X("Week"),
         y=alt.Y("Count"),
@@ -367,11 +418,10 @@ def data_quality_worker():
             if phases is not None:
                 if phases['status'] != 'enrolled': continue
                 days_since_start_enrolled = (int(time.time() * 1000) - phases['phases']['enrolled']) / (MS_IN_A_DAY)
-                if int(days_since_start_enrolled) % 7 == 0:
+                if int(days_since_start_enrolled) > 0 and int(days_since_start_enrolled) % 7 == 0:
                     make_participant_report(participant['id'], study['id'], request_email)
                 if 3 < days_since_start_enrolled <= ENROLLMENT_DAYS:
                     check_active_and_passive_quality(participant['id'], study['id'], days_since_start_enrolled, request_email)
-
 
     counts = {
         "new_user": 0,
@@ -383,7 +433,8 @@ def data_quality_worker():
     }
     # Get status for slack
     for study in all_studies:
-        if study['id'] == COPY_STUDY_ID: continue
+        if study['id'] == COPY_STUDY_ID:
+            continue
 
         all_participants = LAMP.Participant.all_by_study(study['id'])['data']
         for participant in all_participants:
@@ -401,7 +452,9 @@ def data_quality_worker():
     make_data_portal_graphs()
 
     log.info('Sleeping data quality worker...')
-    slack(f"Data quality completed.")
+    slack("[3] Data quality completed.")
+    slack_danielle("[3] (COLLEGE V3) Data quality worker completed.")
+
 
 if __name__ == '__main__':
     data_quality_worker()

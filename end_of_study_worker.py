@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
+""" Module to remove participants from the study """
 import os
+import sys
 import json
 import LAMP
 import time
@@ -7,13 +9,20 @@ import logging
 
 import module_scheduler
 
-from notifications import push, slack
+from notifications import push, slack, slack_danielle
 
 #[REQUIRED] Environment Variables
-"""
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
-"""
+COPY_STUDY_ID = os.getenv("COPY_STUDY_ID")
+RESEARCHER_ID = os.getenv("RESEARCHER_ID")
+PUSH_SLACK_HOOK = os.getenv("PUSH_SLACK_HOOK")
+LAMP_ACCESS_KEY = os.getenv("LAMP_ACCESS_KEY")
+LAMP_SECRET_KEY = os.getenv("LAMP_SECRET_KEY")
+ENROLLMENT_DAYS = float(os.getenv("ENROLLMENT_DAYS"))
+TOTAL_DAYS = float(os.getenv("EXTRA_DAYS")) + ENROLLMENT_DAYS
+
 # DELETE THIS: FOR TESTING
+"""
 ENV_JSON_PATH = "/home/danielle/college_v3/env_vars.json"
 f = open(ENV_JSON_PATH)
 ENV_JSON = json.load(f)
@@ -23,6 +32,9 @@ RESEARCHER_ID = ENV_JSON["RESEARCHER_ID"]
 PUSH_SLACK_HOOK = ENV_JSON["PUSH_SLACK_HOOK"]
 LAMP_ACCESS_KEY = ENV_JSON["LAMP_ACCESS_KEY"]
 LAMP_SECRET_KEY = ENV_JSON["LAMP_SECRET_KEY"]
+ENROLLMENT_DAYS = ENV_JSON["ENROLLMENT_DAYS"]
+TOTAL_DAYS = ENV_JSON["EXTRA_DAYS"] + ENROLLMENT_DAYS
+"""
 
 LAMP.connect(LAMP_ACCESS_KEY, LAMP_SECRET_KEY)
 logging.basicConfig(level=logging.DEBUG)
@@ -52,7 +64,7 @@ DAYS_32_MISSING_PAYMENT_3 = (f"College Mental Health Study - Completed study\n"
     + "You may delete the app. Thank you."
     + "<br><br>-The College Study Team<br> (and Marvin, your favorite College Study Bot)")
 
-def remove_participant(participant_id, study_id, status, request_email, message):
+def remove_participant(participant_id, study_id, status, request_email, message, send=0):
     """ Remove a participant from the study.
 
         Args:
@@ -70,16 +82,22 @@ def remove_participant(participant_id, study_id, status, request_email, message)
     phases['status'] = status
     LAMP.Type.set_attachment(RESEARCHER_ID, participant_id,
                              'org.digitalpsych.college_study_3.phases', phases)
-    push(f"mailto:{request_email}", message)
-    slack(f"{participant_id} has been removed ({status}).")
+    if send:
+        push(f"mailto:{request_email}", message)
+    else:
+        slack(message)
+        slack("The following particpant has not be informed that they have been removed."
+          + " If this has occured in error, please add back in sensors and reset the phase tag."
+          + " Otherwise, please send them the appropriate email for removal from the study.")
+    slack(f"{participant_id} ({request_email}) has been removed ({status}).")
 
 def remove_schedule_and_sensors(participant_id, study_id):
-    """ Add lamp.none and unschedule all surveys for this partcipant.
+    """ Delete all sensors and unschedule all surveys for this partcipant.
     """
     module_scheduler.unschedule_other_surveys(participant_id, keep_these=[])
-    LAMP.Sensor.create(study_id, {'spec': 'lamp.none',
-                                  'name': 'exit_sensor',
-                                  'settings': {}})
+    sensors = LAMP.Sensor.all_by_participant(participant_id)["data"]
+    for s in sensors:
+        LAMP.Sensor.delete(s["id"])
 
 def end_of_study_worker():
     """ End of study worker.
@@ -98,9 +116,9 @@ def end_of_study_worker():
         for participant in all_participants:
             log.info(f"Processing Participant \"{participant['id']}\".")
             try:
-                request_email = LAMP.Type.get_attachment(participant['id'], 'lamp.name')['data']
+                email = LAMP.Type.get_attachment(participant['id'], 'lamp.name')['data']
             except:
-                request_email = study['name']
+                email = study['name']
             try:
                 phases = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_3.phases')['data']
             except Exception as e:
@@ -109,21 +127,22 @@ def end_of_study_worker():
                 days_in_study = (int(time.time() * 1000) - phases["phases"][phases["status"]]) / MS_IN_A_DAY
                 payment_data = LAMP.Type.get_attachment(participant["id"],
                                 'org.digitalpsych.college_study_3.payment')['data']["payment_authorization_3"]
-                if 28 <= days_in_study < 32:
+                if ENROLLMENT_DAYS <= days_in_study < TOTAL_DAYS:
                     if payment_data["code"] != "":
                         remove_participant(participant["id"], study["id"], "completed",
-                                           request_email, COMPLETED_EVERYTHING)
-                    elif 28 <= days_in_study < 29:
-                        push(DAYS_28_MISSING_PAYMENT_3)
-                if days_in_study > 32 and payment_data["earned"] and payment_data["code"] != "":
+                                           email, COMPLETED_EVERYTHING, send=1)
+                    elif ENROLLMENT_DAYS <= days_in_study < ENROLLMENT_DAYS + 2:
+                        push(f"mailto:{email}", DAYS_28_MISSING_PAYMENT_3)
+                if days_in_study > TOTAL_DAYS and payment_data["earned"] and payment_data["code"] != "":
                     remove_participant(participant["id"], study["id"], "completed",
-                                       request_email, DAYS_32_MISSING_PAYMENT_3)
-                elif days_in_study > 32:
+                                       email, DAYS_32_MISSING_PAYMENT_3, send=1)
+                elif days_in_study > TOTAL_DAYS:
                     remove_participant(participant["id"], study["id"], "completed",
-                                       request_email, COMPLETED_EVERYTHING)
+                                       email, COMPLETED_EVERYTHING, send=1)
 
     log.info('Sleeping end of study worker...')
-    slack(f"End of study worker completed.")
+    slack("[5] End of study worker completed.")
+    slack_danielle("[5] (COLLEGE V3) End of study worker completed.")
 
 if __name__ == '__main__':
     end_of_study_worker()

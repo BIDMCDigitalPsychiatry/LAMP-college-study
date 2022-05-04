@@ -1,22 +1,22 @@
+""" Module to check participant redcap completion """
+import sys
 import LAMP
 import datetime
 import os
 import time
 import logging
 import json
-from notifications import slack
+from notifications import slack, slack_danielle
 from end_of_study_worker import remove_participant
 
 #[REQUIRED] Environment Variables
-"""
 LAMP_ACCESS_KEY = os.getenv("LAMP_USERNAME")
 LAMP_SECRET_KEY = os.getenv("LAMP_PASSWORD")
 RESEARCHER_ID = os.getenv("RESEARCHER_ID")
-COPY_STUDY_ID = os.getenv("COPY_STUDY_ID")
-TRIAL_DAYS = float(os.getenv("TRIAL_DAYS"))
 GPS_SAMPLING_THRESHOLD = float(os.getenv("GPS_SAMPLING_THRESHOLD"))
-"""
+
 # DELETE THIS: FOR TESTING
+"""
 ENV_JSON_PATH = "/home/danielle/college_v3/env_vars.json"
 f = open(ENV_JSON_PATH)
 ENV_JSON = json.load(f)
@@ -24,6 +24,7 @@ f.close()
 RESEARCHER_ID = ENV_JSON["RESEARCHER_ID"]
 LAMP_ACCESS_KEY = ENV_JSON["LAMP_ACCESS_KEY"]
 LAMP_SECRET_KEY = ENV_JSON["LAMP_SECRET_KEY"]
+"""
 
 LAMP.connect(LAMP_ACCESS_KEY, LAMP_SECRET_KEY)
 logging.basicConfig(level=logging.DEBUG)
@@ -52,9 +53,7 @@ def check_participant_redcap(email, redcap_form_id):
     # Get the redcap data
     college_v3_redcap = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.redcap.data')['data']["data"]
     df = [x for x in college_v3_redcap if x["record_id"] == str(redcap_form_id)]
-    print(df)
     df = [x for x in df if x["student_email"].lower() == email.lower()]
-    print(df)
     df = [x for x in df if x["enrollment_survey_timestamp"] != ""]
     for i in range(len(df)):
         if df[i]["enrollment_survey_timestamp"] == '[not completed]':
@@ -155,14 +154,24 @@ def update_payment_completion(participant_id, redcap_id):
     except LAMP.ApiException:
         LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_3.payment', payment)
 
+    new_payment_data = {"payment_authorization_1": {},
+                        "payment_authorization_2": {},
+                        "payment_authorization_3": {},
+                       }
+    for k in payment:
+        new_payment_data[k]["earned"] = payment[k]["earned"]
+        new_payment_data[k]["code"] = payment[k]["code"]
+
     # Get the redcap data
     college_v3_redcap = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.redcap.data')['data']["data"]
     # get id for this person
     df = [x for x in college_v3_redcap if x["record_id"] == str(redcap_id)][0]
     for k in payment:
         if int(df[k + "_complete"]) == 2:
-            payment[k]["auth"] = 1
-    LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_3.payment', payment)
+            new_payment_data[k]["auth"] = 1
+        else:
+            new_payment_data[k]["auth"] = 0
+    LAMP.Type.set_attachment(RESEARCHER_ID, participant_id, 'org.digitalpsych.college_study_3.payment', new_payment_data)
 
 def count_redcap_records(email):
     """ Check the number of redcap record for a participant's email.
@@ -194,7 +203,7 @@ def set_redcap_attachments():
     # 0) Check that the Redcap data was updated in the last 2 hours, otherwise don't do this
     college_v3_redcap = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.redcap.data')['data']
     if int(time.time() * 1000) - college_v3_redcap["updated"] > 2 * 3600 * 1000:
-        time_pulled = int(time.time() * 1000) - college_v3_redcap["updated"] / (3600 * 1000)
+        time_pulled = (int(time.time() * 1000) - college_v3_redcap["updated"]) / (3600 * 1000)
         time_pulled = "{:.2f}".format(time_pulled)
         slack(f"[WARNING] Redcap data was pulled >2hrs ({time_pulled} hrs) ago. Aborting.")
         return
@@ -247,8 +256,10 @@ def set_redcap_attachments():
         if phases is not None:
             if phases["status"] == "trial" or phases["status"] == "enrolled":
                 try:
-                    LAMP.Type.get_attachment(p, 'org.digitalpsych.redcap.id')
+                    redcap_id = LAMP.Type.get_attachment(p, 'org.digitalpsych.redcap.id')["data"]
                 except LAMP.ApiException:
+                    redcap_id = -4
+                if redcap_id < 0:
                     # Kick them out
                     slack(f"Participant {email} ({p}) does not have a redcap record. DISCONTINUING!")
                     remove_participant(p, LAMP.Type.parent(p)['data']['Study'], "discontinued", email,
@@ -258,11 +269,12 @@ def set_redcap_attachments():
                                + " staff if you have any questions.")
                     # Remove from enrolled users
                     registered_users = LAMP.Type.get_attachment(RESEARCHER_ID, 'org.digitalpsych.college_study_3.registered_users')["data"]
-                    registered_users.remove(email)
-                    LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_3.registered_users', registered_users)
+                    if email in registered_users:
+                        registered_users.remove(email)
+                        LAMP.Type.set_attachment(RESEARCHER_ID, 'me', 'org.digitalpsych.college_study_3.registered_users', registered_users)
     log.info("Sleeping redcap worker...")
-    slack("Redcap worker completed.")
-    print("Attached survey data to participants.")
+    slack("[1] Redcap worker completed.")
+    slack_danielle("[1] (COLLEGE V3) Redcap worker completed.")
 
 if __name__ == '__main__':
     set_redcap_attachments()

@@ -1,3 +1,4 @@
+""" Module for scheduling activities """
 import os
 import sys
 import LAMP
@@ -11,10 +12,12 @@ import json
 
 from notifications import slack
 
+
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
 LAMP_ACCESS_KEY = os.getenv("LAMP_ACCESS_KEY")
 LAMP_SECRET_KEY = os.getenv("LAMP_SECRET_KEY")
 RESEARCHER_ID = os.getenv("RESEARCHER_ID")
+
 
 # DELETE THIS: FOR TESTING
 """
@@ -174,6 +177,16 @@ def unschedule_other_surveys(part_id, keep_these=["Morning Daily Survey", "Weekl
                 act_dict[i]["schedule"] = []
                 LAMP.Activity.update(activity_id=act_dict[i]['id'], activity_activity=act_dict[i])
 
+def unschedule_specific_survey(part_id, survey_name):
+    """ Delete schedule for a specific activity.
+    """
+    act_dict = LAMP.Activity.all_by_participant(part_id)["data"]
+    all_act = pd.DataFrame(act_dict)
+    for i in range(len(act_dict)):
+        if len(act_dict[i]["schedule"]) > 0 and act_dict[i]["name"] == survey_name:
+            act_dict[i]["schedule"] = []
+            LAMP.Activity.update(activity_id=act_dict[i]['id'], activity_activity=act_dict[i])
+
 def set_start_date(curr_time, shift=18):
     """ Function to convert the start / end times to the same
         day at 6pm.
@@ -244,8 +257,12 @@ def correct_modules(part_id, module_json=MODULE_JSON):
     if phase["status"] != 'enrolled' and phase["status"] != 'trial':
         ret["correct module"] = "Done"
         return ret
-    part_mods = LAMP.Type.get_attachment(part_id,
+    try:
+        part_mods = LAMP.Type.get_attachment(part_id,
                     "org.digitalpsych.college_study_3.modules")["data"]
+    except:
+        slack(f"Participant {part_id} has no module attachment. Please correct asap!")
+        return
     phase_timestamp = phase['phases'][phase["status"]]
     curr_df = int(time.time() * 1000) - phase_timestamp
 
@@ -259,6 +276,17 @@ def correct_modules(part_id, module_json=MODULE_JSON):
     acts = [x for x in acts if x["schedule"] != []]
     act_df = pd.DataFrame(acts)
 
+    # Unschedule unwanted activities
+    for i in range(len(act_df)):
+        found = False
+        for mod in part_mods:
+            # Check if the module is scheduled
+            for x in module_json[mod["module"]]["activities"]:
+                if act_df.loc[i, "name"] == x:
+                    found = True
+        if not found:
+            unschedule_specific_survey(part_id, act_df.loc[i, "name"])
+
     need_to_schedule = False
     for mod in part_mods:
         # Check if the module is scheduled
@@ -266,8 +294,11 @@ def correct_modules(part_id, module_json=MODULE_JSON):
             if len(act_df) == 0 or len(act_df[act_df["name"] == x]) != 1:
                 need_to_schedule = True
         if need_to_schedule:
-            unschedule_other_surveys(part_id)
-            schedule_module(part_id, mod["module"], set_start_date(time.time() * 1000), module_json)
+            # If something is missing, unschedule all activities in the module before proceeding
+            for x in module_json[mod["module"]]["activities"]:
+                 unschedule_specific_survey(part_id, x)
+            
+            schedule_module(part_id, mod["module"], set_start_date(phase_timestamp + mod["start_end"][0], shift=mod["shift"]), module_json)
 
 def attach_modules(part_id):
     """ Add in the modules to the participant attachment for weeks 1-4.
@@ -285,8 +316,12 @@ def attach_modules(part_id):
     """
     # Check where the participant is in the study.
     phase = LAMP.Type.get_attachment(part_id, 'org.digitalpsych.college_study_3.phases')["data"]
-    part_mods = LAMP.Type.get_attachment(part_id,
+    try:
+        part_mods = LAMP.Type.get_attachment(part_id,
                     "org.digitalpsych.college_study_3.modules")["data"]
+    except:
+        slack(f"Participant {part_id} has no module attachment. Please correct asap!")
+        return
 
     # If Trial, make sure that trial_period is scheduled
     if phase["status"] == "trial":
@@ -336,9 +371,11 @@ def attach_modules(part_id):
             return
         elif survey == 0:
             slack(f"Warning: Unable to get GAD-7 score for participant ({part_id}). Randomly choosing module (day = {curr_day}).")
-        part_mods.append({
-                MODULE_SPECS[k]
-            })
+        part_mods.append(
+                MODULE_SPECS[mod_3]
+            )
+        LAMP.Type.set_attachment(RESEARCHER_ID, part_id,
+                             "org.digitalpsych.college_study_3.modules", part_mods)
 
 def _get_week_3_mod(part_id):
     """ Get the module for week 3 (mindfulness or games).
@@ -368,23 +405,23 @@ def _get_week_3_mod(part_id):
     act_events = [x for x in act_events if len(x["temporal_slices"]) > 0]
     gad7_score = -1
     for x in act_events:
-        if gad7_score != -1:
+        if gad7_score == -1:
             for temp in x["temporal_slices"]:
                 if "value" not in temp or "item" not in temp:
                     break
                 if temp["item"] in GAD7_QUESTIONS:
                     if gad7_score == -1:
                         gad7_score = 0
-                    gad7_score = value_map[temp["value"]]
+                    gad7_score += value_map[temp["value"]]
     # Have to pick a module
-    mod_2 = None
+    mod_3 = None
     if gad7_score == -1:
         if random.random() < 0.5:
-            mod_2 = "games"
+            mod_3 = "games"
         else:
-            mod_2 = "mindfulness"
+            mod_3 = "mindfulness"
     elif gad7_score != -1 and gad7_score > 10:
-        mod_2 = "games"
+        mod_3 = "games"
     elif gad7_score != -1 and gad7_score <= 10:
-        mod_2 = "mindfulness"
-    return mod_2, gad7_score != -1
+        mod_3 = "mindfulness"
+    return mod_3, gad7_score != -1

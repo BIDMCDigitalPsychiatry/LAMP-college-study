@@ -1,7 +1,7 @@
+""" Update the master log """
 import os
 import sys
 import json
-sys.path.insert(1, "/home/danielle/LAMP-py")
 import LAMP
 import time
 import datetime
@@ -11,7 +11,7 @@ import requests
 from pprint import pformat
 import pandas as pd
 
-from notifications import slack
+from notifications import slack, slack_danielle
 
 import gspread
 import pandas as pd
@@ -19,15 +19,13 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 
 #[REQUIRED] Environment Variables
-"""
 LAMP_ACCESS_KEY = os.getenv("LAMP_USERNAME")
 LAMP_SECRET_KEY = os.getenv("LAMP_PASSWORD")
 RESEARCHER_ID = os.getenv("RESEARCHER_ID")
 COPY_STUDY_ID = os.getenv("COPY_STUDY_ID")
-TRIAL_DAYS = float(os.getenv("TRIAL_DAYS"))
-GPS_SAMPLING_THRESHOLD = float(os.getenv("GPS_SAMPLING_THRESHOLD"))
-"""
+
 # DELETE THIS: FOR TESTING
+"""
 ENV_JSON_PATH = "/home/danielle/college_v3/env_vars.json"
 f = open(ENV_JSON_PATH)
 ENV_JSON = json.load(f)
@@ -36,6 +34,7 @@ COPY_STUDY_ID = ENV_JSON["COPY_STUDY_ID"]
 RESEARCHER_ID = ENV_JSON["RESEARCHER_ID"]
 LAMP_ACCESS_KEY = ENV_JSON["LAMP_ACCESS_KEY"]
 LAMP_SECRET_KEY = ENV_JSON["LAMP_SECRET_KEY"]
+"""
 
 b = datetime.datetime.fromtimestamp((time.time() * 1000) / 1000)
 FORMATTED_DATE = datetime.date.strftime(b, "%m/%d/%Y")
@@ -62,16 +61,41 @@ def update_log_for_participant(participant_id, request_email, master_log):
     status = phases["status"]
     time_elapsed = (int(time.time()) * 1000 - phases["phases"][status]) / MS_IN_A_DAY
     time_elapsed = "{:.2f}".format(time_elapsed)
-    redcap_id = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.redcap.id')["data"]
-    payment = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_3.payment')["data"]
-    group = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_3.group_id')["data"]
+    try:
+        redcap_id = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.redcap.id')["data"]
+    except:
+        redcap_id = ""
+    try:
+        payment = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_3.payment')["data"]
+    except:
+        payment = {
+                 "payment_authorization_1": {
+                     "earned": 0,
+                     "auth": 0,
+                     "code": ""
+                 },
+                 "payment_authorization_2": {
+                     "earned": 0,
+                     "auth": 0,
+                     "code": ""
+                 },
+                 "payment_authorization_3": {
+                     "earned": 0,
+                     "auth": 0,
+                     "code": ""
+                 }
+             }
+    try:
+        group = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_3.group_id')["data"]
+    except:
+        group = ""
     try:
         activities = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_3.interventions')["data"]
     except:
         activities = []
 
     redcap_ifc = ""
-    if redcap_id > 0:
+    if redcap_id != "" and redcap_id > 0:
         redcap_ifc = "***"
     payment_forms = ["", "", ""]
     for i in range(len(payment_forms)):
@@ -81,7 +105,7 @@ def update_log_for_participant(participant_id, request_email, master_log):
             payment_forms[i] = "missing"
 
     # Check if participant is in the master_log
-    if len(master_log[master_log["participant_id"] == participant_id]) == 0:
+    if len(master_log) == 0 or len(master_log[master_log["participant_id"] == participant_id]) == 0:
         new_part = {
             "participant_id": participant_id,
             "status": status,
@@ -99,7 +123,6 @@ def update_log_for_participant(participant_id, request_email, master_log):
             new_part[f"activity_{i}"] = ""
             if len(activities) > i:
                 new_part[f"activity_{i}"] = activities[i]["activity"]
-            new_part[f"act_{i}_sent"] = ""
         new_part = pd.DataFrame(new_part, index=[0])
         master_log = pd.concat([master_log, new_part])
     else:
@@ -141,14 +164,14 @@ def update_log_for_participant(participant_id, request_email, master_log):
         master_log.loc[idx, "days_in_study"] = time_elapsed
         # last updated
         master_log.loc[idx, "last_updated"] = FORMATTED_DATE
-        for i in range(10):
+        for i in range(6):
             current_act = master_log.loc[idx, f"activity_{i}"]
             act = ""
             if len(activities) > i:
                 act = activities[i]["activity"]
             if current_act != "" and current_act != act:
                 slack(f"Activity attachment / google sheets does not match for {request_email} ({participant_id})! Please check on this!")
-            elif current_act != "":
+            elif current_act == "":
                 master_log.loc[idx, f"activity_{i}"] = act
     return master_log
 
@@ -165,7 +188,6 @@ def update_master_log():
     creds = ServiceAccountCredentials.from_json_keyfile_name('/home/danielle/college_v3/college-study-342720-12a7352885be.json', scope)
     client = gspread.authorize(creds) # authorize the clientsheet
     sheet = client.open('college_v3_master_log') # get the instance of the Spreadsheet
-
     sheet_instance = sheet.get_worksheet(0) # get the first sheet of the Spreadsheet
 
     records_data = sheet_instance.get_all_records()
@@ -185,18 +207,16 @@ def update_master_log():
                 request_email = LAMP.Type.get_attachment(participant['id'], 'lamp.name')['data']
             except:
                 request_email = study['name']
-            # Check which group participant is in
-            phases = None
             try:
                 phases = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_3.phases')['data']
             except Exception as e:
-                pass
-            if phases is not None:
-                master_log = update_log_for_participant(participant["id"], request_email, master_log)
+                continue
+            master_log = update_log_for_participant(participant["id"], request_email, master_log)
 
     sheet_instance.update([master_log.columns.values.tolist()] + master_log.values.tolist())
 
-    slack(f"Master log is updated.")
+    slack("[6] Master log is updated.")
+    slack_danielle("[6] (COLLEGE V3) Master log worker completed.")
 
 if __name__ == '__main__':
     update_master_log()

@@ -1,33 +1,33 @@
 # -*- coding: utf-8 -*-
+""" Worker to schedule activities (via module scheduler), and select interventions """
 import os
 import sys
 import json
-sys.path.insert(1, "/home/danielle/LAMP-py")
 import LAMP
-sys.path.insert(1, "/home/danielle/LAMP-cortex")
 import cortex
 import time
+import math
 import random
 import logging
 import requests
-from pprint import pformat
 import pandas as pd
-import math
+import pickle
 
 import module_scheduler
-from notifications import push, slack
+from notifications import push, slack, slack_danielle
 from end_of_study_worker import remove_participant
 
 #[REQUIRED] Environment Variables
-"""
 LAMP_ACCESS_KEY = os.getenv("LAMP_USERNAME")
 LAMP_SECRET_KEY = os.getenv("LAMP_PASSWORD")
 RESEARCHER_ID = os.getenv("RESEARCHER_ID")
 COPY_STUDY_ID = os.getenv("COPY_STUDY_ID")
 TRIAL_DAYS = float(os.getenv("TRIAL_DAYS"))
 GPS_SAMPLING_THRESHOLD = float(os.getenv("GPS_SAMPLING_THRESHOLD"))
+SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
+
+# FOR TESTING
 """
-# DELETE THIS: FOR TESTING
 ENV_JSON_PATH = "/home/danielle/college_v3/env_vars.json"
 f = open(ENV_JSON_PATH)
 ENV_JSON = json.load(f)
@@ -39,26 +39,32 @@ TRIAL_DAYS = int(ENV_JSON["TRIAL_DAYS"])
 GPS_SAMPLING_THRESHOLD = float(ENV_JSON["GPS_SAMPLING_THRESHOLD"])
 LAMP_ACCESS_KEY = ENV_JSON["LAMP_ACCESS_KEY"]
 LAMP_SECRET_KEY = ENV_JSON["LAMP_SECRET_KEY"]
+"""
+
 
 LAMP.connect(LAMP_ACCESS_KEY, LAMP_SECRET_KEY)
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
-#Globals
+# Globals
 MS_IN_A_DAY = 86400000
 MODULE_JSON_FILE = "v3_modules.json"
 f = open(MODULE_JSON_FILE)
 MODULE_JSON = json.load(f)
 f.close()
 
-passive_model_file = "/home/danielle/college_v3/daily_passive_model.json"
+passive_model_file = "daily_passive_model.json"
 f = open(passive_model_file)
 PASSIVE_MODEL_COEFS = json.load(f)
 f.close()
 
 INTERVENTIONS = {
-    "cbt": ["Socratic Questions", "Challenging Self-Criticism", "Focus on the Positive", "Strengths", "Behavioral Activation", "Behavioral Experiment"],
-    "mindfulness": ["Anchoring Ambiance", "Calming your Body", "Forest and Nature Sounds", "Inner Teacher", "Loving Kindness", "Mountain Meditation"]
+    "cbt": ["Socratic Questions", "Challenging Self-Criticism",
+            "Focus on the Positive", "Strengths",
+            "Behavioral Activation", "Behavioral Experiment"],
+    "mindfulness": ["Anchoring Ambiance", "Calming your Body",
+                    "Forest and Nature Sounds", "Inner Teacher",
+                    "Loving Kindness", "Mountain Meditation"]
 }
 
 def get_intervention(participant_id, request_email):
@@ -68,7 +74,11 @@ def get_intervention(participant_id, request_email):
         1) Normalize data, pass through model
         2) Based on model predictions and previous activities,
             pick an activity
-        3) Ping digital navigator and / or email participant
+        3) Email participant
+
+        Args:
+            participant_id: the participant id
+            request_email: email for this participant
     """
     feature_list = ["entropy", "hometime", "screen_duration", "gps_data_quality", "step_count"]
     # get start and end times
@@ -87,13 +97,13 @@ def get_intervention(participant_id, request_email):
         else:
             feature = cortex.secondary.data_quality.data_quality(id=participant_id,
                                                start=start_time,
-                                               end=end_time,
+                                               end=end_time + 1,
                                                resolution=MS_IN_A_DAY,
                                                feature="gps",
                                                bin_size=1000 * 60)['data']
         feature = [x for x in feature if x["value"] is not None]
         if len(feature) == 2:
-            participant_features.append(feature.loc[1, "value"] - feature.loc[0, "value"])
+            participant_features.append(feature[1]["value"] - feature[0]["value"])
         else:
             participant_features.append(None)
     participant_features = [x for x in participant_features if x is not None]
@@ -103,22 +113,27 @@ def get_intervention(participant_id, request_email):
         rand = 1
         model_score = random.random()
     else:
+        with open('/home/danielle/college_v3/daily_passive_model.pkl', 'rb') as handle:
+            passive_model = pickle.load(handle)
+
         model_score = 0
         for i, f in enumerate(PASSIVE_MODEL_COEFS):
             participant_features[i] = ((participant_features[i]
                         - PASSIVE_MODEL_COEFS[f]["mean"]) / PASSIVE_MODEL_COEFS[f]["std"])
-            model_score += PASSIVE_MODEL_COEFS[f]["coef"] * participant_features[i]
+        model_score = passive_model.predict_proba([participant_features])[0, 1]
 
     # Get activities and pick a new one
     try:
-        activities = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_3.interventions')["data"]
+        activities = LAMP.Type.get_attachment(participant_id, "org.digitalpsych.college_study_3.interventions")["data"]
     except:
         activities = []
     if model_score >= 0.5:
         activity_choices = INTERVENTIONS["cbt"]
+        tab = "Assess"
     else:
         activity_choices = INTERVENTIONS["mindfulness"]
-    past_activities = [x["activity"] for x in activites]
+        tab = "Manage"
+    past_activities = [x["activity"] for x in activities]
     for a in activity_choices:
         if a not in past_activities:
             # schedule for a
@@ -129,21 +144,36 @@ def get_intervention(participant_id, request_email):
                 "random": rand
             })
             LAMP.Type.set_attachment(RESEARCHER_ID, participant_id,
-                        'org.digitalpsych.college_study_3.interventions', activities)
+                                     "org.digitalpsych.college_study_3.interventions", activities)
             # get group and either slack or send email
-            group = LAMP.Type.get_attachment(participant_id, 'org.digitalpsych.college_study_3.group_id')['data']
+            group = LAMP.Type.get_attachment(participant_id, "org.digitalpsych.college_study_3.group_id")['data']
             if group == 0:
-                slack(f"[Intervention] Participant {request_email} ({participant_id}) should be told to complete *{a}* today.")
+                # slack(f"[Intervention] Participant {request_email} ({participant_id}) should be told to complete *{a}* today.")
+                random_num = random.random()
+                if random_num < 0.25:
+                    random_name = "Danielle"
+                elif random_num < 0.5:
+                    random_name = "Ryan"
+                elif random_num < 0.75:
+                    random_name = "Luke"
+                else:
+                    random_name = "Andrew"
+                push(f"mailto:{request_email}", f"mindLAMP Study: Suggested Activity\nHello,<br><br>Nice job in the past couple of days! Based on your data, we’d like to suggest another activity for you. \"{a}\" can be found in the {tab} tab. If you complete this activity, please make sure to complete the Check-in survey to let us know what you thought. Feel free to email us at {SUPPORT_EMAIL} if you have any questions!<br><br>Best,<br>{random_name}")
             elif group == 1:
-                push(f"mailto:{request_email}", f"mindLAMP Study: Suggested Activity\nHello,<br><br>Nice job in the past couple of days! Based on your data, we’d like to suggest another activity for you. {a} can be found in the Assess tab. If you complete this activity, please make sure to complete the Check-in survey to let us know what you thought. Feel free to email {SUPPORT_EMAIL} if you have any questions!<br><br>Cheers,<br>Marvin (A Friendly College Study Bot)")
+                push(f"mailto:{request_email}", f"mindLAMP Study: Suggested Activity\nHello,<br><br>Nice job in the past couple of days! Based on your data, we’d like to suggest another activity for you. \"{a}\" can be found in the {tab} tab. If you complete this activity, please make sure to complete the Check-in survey to let us know what you thought. Feel free to email us at {SUPPORT_EMAIL} if you have any questions!<br><br>Cheers,<br>Marvin (A Friendly College Study Bot)")
             return
     slack(f"Ran out of intervention activites for Participant ({participant_id}). Please check on this!")
 
 def check_phq9(participant_id, study_id):
     """ Check for high (=3) question 9 PHQ-9 scores. Slack John if so.
+
+        Args:
+            participant_id: the participant id
+            study_id: the study id (to get activities)
     """
+    request_email = LAMP.Type.get_attachment(participant_id, "lamp.name")["data"]
     data = LAMP.ActivityEvent.all_by_participant(participant_id)['data']
-    all_activities = LAMP.Activity.all_by_study(study_id)['data'] 
+    all_activities = LAMP.Activity.all_by_study(study_id)['data']
     weekly_survey = [x for x in all_activities if x['name'] == 'Weekly Survey'][0]
     weekly_scores = [(
         event['timestamp'],
@@ -155,8 +185,13 @@ def check_phq9(participant_id, study_id):
     weekly_scores_24_hrs = [s for s in weekly_scores if s[0] >= int(time.time() * 1000) - (MS_IN_A_DAY)]
     for _, score in weekly_scores_24_hrs:
         if score == 'Nearly every day':
-            slack(f"[PHQ-9 WARNING] Participant {participant_id} reported 'Nearly every day' on Q9 of the PHQ-9 <@UBJLNQMAS>")
-            push(f"mailto:{SUPPORT_EMAIL}", f"[URGENT] Participant {participant_id} reported an 3 on question 9 of PHQ-9.\nPlease get in touch with this participant's support contact.")
+            # get phone number
+            email = LAMP.Type.get_attachment(participant_id, "lamp.name")["data"]
+            phone_number = [x for x in LAMP.Type.get_attachment(RESEARCHER_ID,
+                                                                "org.digitalpsych.redcap.data")["data"]["data"]
+                             if x["student_email"].lower() == email.lower()][0]["phone_number"]
+            slack(f"[PHQ-9 WARNING] Participant {participant_id} ({email}, {phone_number}) reported 'Nearly every day' on Q9 of the PHQ-9 <@UBJLNQMAS>")
+            push(f"mailto:{SUPPORT_EMAIL}", f"[URGENT] Participant {request_email} ({participant_id}, {phone_number}) reported an 3 on question 9 of PHQ-9.\nPlease get in touch with this participant's support contact.")
 
             # Determine the Participant's device push token or bail if none is configured.
             analytics = LAMP.SensorEvent.all_by_participant(participant_id, origin="lamp.analytics")['data']
@@ -164,10 +199,10 @@ def check_phq9(participant_id, study_id):
             if len(all_devices) > 0:
                 device = f"{'apns' if all_devices[0]['device_type'] == 'iOS' else 'gcm'}:{all_devices[0]['device_token']}"
 
-                push(device, f"Thank you for completing your weekly survey. Because your responses are not monitored in real time, we would like to remind you of some other resources that you can access if you are considering self-harm.\n Please see your 'Safety Plan' activity in which you have entered a support line availablethrough your university. The national suicide prevention line is a 24/7 toll-free service that can be accessed by dialing 1-800-273-8255.")
+                push(device, f"Thank you for completing your weekly survey. Because your responses are not monitored in real time, we would like to remind you of some other resources that you can access if you are considering self-harm.\n Please see your 'Safety Plan' activity in which you have entered a support line available through your university. The national suicide prevention line is a 24/7 toll-free service that can be accessed by dialing 1-800-273-8255.")
 
                 # Record success/failure to send push notification.
-                log.info(f"Sent PHQ-9 notice to Participant {participant_id} via push notification.")
+                log.info(f"Sent PHQ-9 notice to participant {request_email} ({participant_id}) via push notification.")
             else:
                 slack(f"[PHQ-9 WARNING] [URGENT] a push notification was not able to be sent in regards to the elevated PHQ-9. Please reach out to this user ASAP <@UBJLNQMAS>")
             break
@@ -194,7 +229,7 @@ def activity_worker():
                 request_email = study['name']
             # Check which group participant is in
             try:
-                phases = LAMP.Type.get_attachment(participant['id'], 'org.digitalpsych.college_study_3.phases')['data']
+                phases = LAMP.Type.get_attachment(participant['id'], "org.digitalpsych.college_study_3.phases")['data']
             except Exception as e:
                 continue
             if phases['status'] == 'trial' or phases['status'] == 'enrolled':
@@ -206,12 +241,13 @@ def activity_worker():
                     # If enrolled, additionally check for module 3 and do interventions
                     module_scheduler.attach_modules(participant['id'])
                     days_in_study = math.floor((int(time.time()) * 1000 - phases["phases"][phases["status"]]) / MS_IN_A_DAY)
-                    group = LAMP.Type.get_attachment(participant["id"], 'org.digitalpsych.college_study_3.group_id')['data']
+                    group = LAMP.Type.get_attachment(participant["id"], "org.digitalpsych.college_study_3.group_id")['data']
                     if 0 < days_in_study < 28 and days_in_study % 4 == 0 and (group == 0 or group == 1):
                         get_intervention(participant['id'], request_email)
 
     log.info('Sleeping activity worker...')
-    slack(f"Activity worker completed.")
+    slack("[4] Activity worker completed.")
+    slack_danielle("[4] (COLLEGE V3) Activity worker completed.")
 
 if __name__ == '__main__':
     activity_worker()

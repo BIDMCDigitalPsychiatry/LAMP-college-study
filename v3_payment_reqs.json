@@ -1,15 +1,15 @@
 {
-    "payment_1": {
-        "activities": ["Weekly Survey"],
+    "payment_authorization_1": {
+        "activities": ["Weekly Survey (long)"],
         "counts": [1],
         "time_range": [[0, 691200000]]
     },
-    "payment_2": {
+    "payment_authorization_2": {
         "activities": ["Weekly Survey"],
         "counts": [1],
         "time_range": [[691200000, 1814400000]]
     },
-    "payment_3": {
+    "payment_authorization_3": {
         "activities": ["Weekly Survey"],
         "counts": [1],
         "time_range": [[1814400000, 2764800000]]
