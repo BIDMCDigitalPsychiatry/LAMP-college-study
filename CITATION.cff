@@ -1,0 +1,11 @@
+cff-version: 0.0.1
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: Currey
+    given-names: Danielle
+  - family-names: Hays
+    given-names: Ryan
+  - family-names: Vaidyam
+    given-names: Aditya
+title: "College Study V3"
+date-released: 2022-05-04
